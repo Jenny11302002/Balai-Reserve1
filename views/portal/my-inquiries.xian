@@ -1,0 +1,44 @@
+<div class="container-lg px-4 py-5">
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-4 gap-2">
+    <div>
+      <h4 class="fw-bold mb-1"><i class="fas fa-comments me-2 text-primary"></i>My Inquiries</h4>
+      <p class="text-muted small mb-0">Track the questions and messages you've sent us.</p>
+    </div>
+    <a href="/portal/inquire" class="btn btn-primary btn-sm"><i class="fas fa-plus me-1"></i>New Inquiry</a>
+  </div>
+
+  <% if (!inquiries || inquiries.length === 0) { %>
+  <div class="bg-white rounded-3 border shadow-sm text-center py-5">
+    <i class="fas fa-inbox text-muted mb-3" style="font-size:2.5rem;"></i>
+    <h6 class="fw-bold">No inquiries yet</h6>
+    <p class="text-muted small mb-3">When you send us a message, it will appear here with its status.</p>
+    <a href="/portal/inquire" class="btn btn-primary btn-sm"><i class="fas fa-paper-plane me-1"></i>Send an Inquiry</a>
+  </div>
+  <% } else { %>
+  <div class="row g-3">
+    <% for (const q of inquiries) { %>
+    <div class="col-12">
+      <div class="bg-white rounded-3 border shadow-sm p-3 p-md-4">
+        <div class="d-flex flex-wrap justify-content-between align-items-start gap-2 mb-2">
+          <div>
+            <div class="fw-bold"><%= q.subject %></div>
+            <div class="text-muted small">
+              <span class="badge bg-light text-dark text-capitalize me-1"><%= (q.category || 'general').replace(/_/g,' ') %></span>
+              <i class="far fa-clock ms-1 me-1"></i><%= formatDate(q.created_at) %>
+            </div>
+          </div>
+          <div><%- statusBadge(q.status) %></div>
+        </div>
+        <div class="text-body small mb-2" style="white-space:pre-wrap;"><%= q.message %></div>
+        <% if (q.resolution) { %>
+        <div class="alert alert-success py-2 px-3 small mb-0 mt-2">
+          <strong><i class="fas fa-reply me-1"></i>Our response:</strong><br />
+          <span style="white-space:pre-wrap;"><%= q.resolution %></span>
+        </div>
+        <% } %>
+      </div>
+    </div>
+    <% } %>
+  </div>
+  <% } %>
+</div>

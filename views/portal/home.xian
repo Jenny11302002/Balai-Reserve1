@@ -1,0 +1,235 @@
+<% layout('layouts/portal') %>
+
+<style>
+/* ── Featured Cards ──────────────────────────── */
+.feat-card { background:#fff;border-radius:1rem;overflow:hidden;border:1px solid #e5e7eb;transition:transform .2s,box-shadow .2s;display:flex;flex-direction:column; }
+.feat-card:hover { transform:translateY(-4px);box-shadow:0 12px 32px rgba(0,0,0,.12); }
+.feat-img { position:relative;overflow:hidden;height:200px; }
+.feat-img img { width:100%;height:100%;object-fit:cover;transition:transform .3s; }
+.feat-card:hover .feat-img img { transform:scale(1.05); }
+.feat-img-placeholder { height:200px;display:flex;align-items:center;justify-content:center;font-size:3.5rem;color:rgba(255,255,255,.3); }
+.feat-badge { position:absolute;top:.6rem;right:.6rem;background:rgba(0,0,0,.5);color:#fff;font-size:.68rem;font-weight:600;padding:2px 8px;border-radius:999px;backdrop-filter:blur(4px); }
+.feat-body { padding:1rem;flex:1;display:flex;flex-direction:column; }
+.feat-type { font-size:.7rem;font-weight:700;text-transform:uppercase;letter-spacing:.06em;margin-bottom:.2rem; }
+.feat-name { font-weight:700;margin-bottom:.2rem;color:#111827; }
+.feat-meta { font-size:.78rem;color:#6b7280;margin-bottom:.5rem; }
+.feat-price { font-size:1.1rem;font-weight:700;color:#4f46e5; }
+.feat-price small { font-size:.72rem;color:#9ca3af;font-weight:400; }
+.feat-footer { display:flex;justify-content:space-between;align-items:center;padding-top:.75rem;border-top:1px solid #f3f4f6;margin-top:auto; }
+
+/* Section label style */
+.section-label { display:flex;align-items:center;justify-content:space-between;margin-bottom:1.25rem; }
+.section-label h4 { font-weight:700;margin:0; }
+</style>
+
+<%# Hero %>
+<div class="portal-hero">
+  <div class="container-lg px-4">
+    <h1 class="mb-2"><i class="fas fa-home me-2"></i>Balai-Reserve</h1>
+    <p class="mb-4" style="font-size:1.1rem;opacity:.9;">Your Home Away From Home — Browse rooms, venues, and cottages, then book in minutes.</p>
+    <div class="d-flex gap-3 justify-content-center flex-wrap">
+      <a href="/portal/rooms"    class="btn btn-light btn-lg px-4"><i class="fas fa-bed me-2"></i>Rooms</a>
+      <a href="/portal/venues"   class="btn btn-light btn-lg px-4"><i class="fas fa-map-marker-alt me-2"></i>Venues</a>
+      <a href="/portal/cottages" class="btn btn-light btn-lg px-4"><i class="fas fa-home me-2"></i>Cottages</a>
+      <% if (currentUser) { %>
+      <a href="/portal/book" class="btn btn-warning btn-lg px-4"><i class="fas fa-calendar-plus me-2"></i>Book Now</a>
+      <% } else { %>
+      <a href="/auth/login" class="btn btn-warning btn-lg px-4"><i class="fas fa-sign-in-alt me-2"></i>Sign In to Book</a>
+      <% } %>
+    </div>
+  </div>
+</div>
+
+<div class="container-lg px-4 py-4">
+
+  <%# Availability stats %>
+  <div class="row g-3 mb-5">
+    <div class="col-6 col-md-3">
+      <a href="/portal/rooms" class="text-decoration-none">
+        <div class="text-center p-3 bg-white rounded-3 shadow-sm border h-100" style="transition:box-shadow .2s;">
+          <div class="fs-2 fw-bold text-primary"><%= availableRooms %></div>
+          <div class="text-muted small"><i class="fas fa-bed me-1"></i>Rooms Available</div>
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a href="/portal/venues" class="text-decoration-none">
+        <div class="text-center p-3 bg-white rounded-3 shadow-sm border h-100">
+          <div class="fs-2 fw-bold text-success"><%= availableVenues %></div>
+          <div class="text-muted small"><i class="fas fa-map-marker-alt me-1"></i>Venues Available</div>
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <a href="/portal/cottages" class="text-decoration-none">
+        <div class="text-center p-3 bg-white rounded-3 shadow-sm border h-100">
+          <div class="fs-2 fw-bold" style="color:#059669;"><%= availableCottages %></div>
+          <div class="text-muted small"><i class="fas fa-home me-1"></i>Cottages Available</div>
+        </div>
+      </a>
+    </div>
+    <div class="col-6 col-md-3">
+      <div class="text-center p-3 bg-white rounded-3 shadow-sm border h-100">
+        <div class="fs-2 fw-bold text-warning"><%= packages.length %></div>
+        <div class="text-muted small"><i class="fas fa-star me-1"></i>Event Packages</div>
+      </div>
+    </div>
+  </div>
+
+  <%# ── Featured Rooms ──────────────────────────────────────── %>
+  <% if (featuredRooms && featuredRooms.length > 0) { %>
+  <div class="section-label mb-3">
+    <h4><i class="fas fa-bed me-2 text-primary"></i>Featured Rooms</h4>
+    <a href="/portal/rooms" class="btn btn-sm btn-outline-primary">View All Rooms <i class="fas fa-arrow-right ms-1"></i></a>
+  </div>
+  <div class="row g-3 mb-5">
+    <% for (const r of featuredRooms) { %>
+    <div class="col-12 col-md-4">
+      <div class="feat-card h-100">
+        <div class="feat-img">
+          <% if (r.imagesList && r.imagesList.length > 0) { %>
+            <img src="<%= r.imagesList[0] %>" alt="<%= r.name %>" loading="lazy" />
+            <% if (r.imagesList.length > 1) { %>
+            <div class="feat-badge"><i class="fas fa-images me-1"></i><%= r.imagesList.length %></div>
+            <% } %>
+          <% } else { %>
+            <div class="feat-img-placeholder" style="background:linear-gradient(135deg,#1e1b4b,#4f46e5);">
+              <i class="fas fa-bed"></i>
+            </div>
+          <% } %>
+        </div>
+        <div class="feat-body">
+          <div class="feat-type text-primary"><%= r.type_name %></div>
+          <div class="feat-name"><%= r.name %></div>
+          <div class="feat-meta">
+            <i class="fas fa-users me-1"></i><%= r.capacity %> guests
+            <% if (r.floor) { %>&nbsp;&middot;&nbsp;<%= r.floor %><% } %>
+          </div>
+          <div class="feat-footer">
+            <div>
+              <div class="feat-price"><%= formatPeso(r.price) %><small>/night</small></div>
+              <div style="font-size:.7rem;color:#d97706;">DP: <%= formatPeso(Math.ceil(r.price*0.5)) %></div>
+            </div>
+            <a href="/portal/book?type=room&item_id=<%= r.id %>" class="btn btn-primary btn-sm px-3">Book</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <% } %>
+  </div>
+  <% } %>
+
+  <%# ── Featured Venues ─────────────────────────────────────── %>
+  <% if (featuredVenues && featuredVenues.length > 0) { %>
+  <div class="section-label mb-3">
+    <h4><i class="fas fa-map-marker-alt me-2 text-success"></i>Featured Venues</h4>
+    <a href="/portal/venues" class="btn btn-sm btn-outline-success">View All Venues <i class="fas fa-arrow-right ms-1"></i></a>
+  </div>
+  <div class="row g-3 mb-5">
+    <% for (const v of featuredVenues) { %>
+    <div class="col-12 col-md-4">
+      <div class="feat-card h-100">
+        <div class="feat-img">
+          <% if (v.imagesList && v.imagesList.length > 0) { %>
+            <img src="<%= v.imagesList[0] %>" alt="<%= v.name %>" loading="lazy" />
+            <% if (v.imagesList.length > 1) { %>
+            <div class="feat-badge"><i class="fas fa-images me-1"></i><%= v.imagesList.length %></div>
+            <% } %>
+          <% } else { %>
+            <div class="feat-img-placeholder" style="background:linear-gradient(135deg,#064e3b,#10b981);">
+              <i class="fas fa-map-marker-alt"></i>
+            </div>
+          <% } %>
+          <div style="position:absolute;top:.6rem;left:.6rem;background:rgba(0,0,0,.5);color:#fff;font-size:.68rem;padding:2px 8px;border-radius:999px;backdrop-filter:blur(4px);">
+            <%= v.venue_type.replace(/_/g,' ').replace(/\b\w/g,l=>l.toUpperCase()) %>
+          </div>
+        </div>
+        <div class="feat-body">
+          <div class="feat-type text-success">Venue</div>
+          <div class="feat-name"><%= v.name %></div>
+          <div class="feat-meta">
+            <i class="fas fa-users me-1"></i>Up to <%= v.capacity %>
+            <% if (v.location) { %>&nbsp;&middot;&nbsp;<i class="fas fa-map-pin me-1"></i><%= v.location %><% } %>
+          </div>
+          <div class="feat-footer">
+            <div>
+              <div class="feat-price"><%= formatPeso(v.price) %><small> / event</small></div>
+              <div style="font-size:.7rem;color:#d97706;">DP: <%= formatPeso(Math.ceil(v.price*0.5)) %></div>
+            </div>
+            <a href="/portal/book?type=venue&item_id=<%= v.id %>" class="btn btn-success btn-sm px-3">Book</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <% } %>
+  </div>
+  <% } %>
+
+  <%# ── Featured Cottages ───────────────────────────────────── %>
+  <% if (featuredCottages && featuredCottages.length > 0) { %>
+  <div class="section-label mb-3">
+    <h4><i class="fas fa-home me-2" style="color:#059669;"></i>Cottages</h4>
+    <a href="/portal/cottages" class="btn btn-sm btn-outline-secondary" style="border-color:#059669;color:#059669;">View All Cottages <i class="fas fa-arrow-right ms-1"></i></a>
+  </div>
+  <div class="row g-3 mb-5">
+    <% for (const c of featuredCottages) { %>
+    <div class="col-12 col-md-4">
+      <div class="feat-card h-100">
+        <div class="feat-img">
+          <% if (c.imagesList && c.imagesList.length > 0) { %>
+            <img src="<%= c.imagesList[0] %>" alt="<%= c.name %>" loading="lazy" />
+            <% if (c.imagesList.length > 1) { %>
+            <div class="feat-badge"><i class="fas fa-images me-1"></i><%= c.imagesList.length %></div>
+            <% } %>
+          <% } else { %>
+            <div class="feat-img-placeholder" style="background:linear-gradient(135deg,#064e3b,#059669);">
+              <i class="fas fa-home"></i>
+            </div>
+          <% } %>
+        </div>
+        <div class="feat-body">
+          <div class="feat-type" style="color:#059669;"><i class="fas fa-leaf me-1"></i>Cottage</div>
+          <div class="feat-name"><%= c.name %></div>
+          <div class="feat-meta"><i class="fas fa-users me-1"></i>Up to <%= c.capacity %> guests</div>
+          <div class="feat-footer">
+            <div>
+              <div class="feat-price"><%= formatPeso(c.price) %></div>
+              <div style="font-size:.7rem;color:#d97706;">DP: <%= formatPeso(Math.ceil(c.price*0.5)) %></div>
+            </div>
+            <a href="/portal/book?type=cottage&item_id=<%= c.id %>" class="btn btn-sm px-3" style="background:#059669;color:#fff;border:none;">Book</a>
+          </div>
+        </div>
+      </div>
+    </div>
+    <% } %>
+  </div>
+  <% } %>
+
+  <%# How It Works %>
+  <div class="bg-white rounded-3 border p-4 mb-5">
+    <h5 class="fw-bold mb-4 text-center">How to Book</h5>
+    <div class="row g-3 text-center">
+      <div class="col-6 col-md-3">
+        <div class="mb-2" style="font-size:2rem;color:#4f46e5;"><i class="fas fa-search"></i></div>
+        <div class="fw-bold small">1. Browse</div>
+        <div class="text-muted small">Find your ideal room, venue, or cottage — with photos</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="mb-2" style="font-size:2rem;color:#10b981;"><i class="fas fa-calendar-check"></i></div>
+        <div class="fw-bold small">2. Select & Book</div>
+        <div class="text-muted small">Pick your dates, choose a payment method, confirm</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="mb-2" style="font-size:2rem;color:#f59e0b;"><i class="fas fa-money-bill-wave"></i></div>
+        <div class="fw-bold small">3. Pay Downpayment</div>
+        <div class="text-muted small">GCash, bank transfer, Maya, or cash at front desk</div>
+      </div>
+      <div class="col-6 col-md-3">
+        <div class="mb-2" style="font-size:2rem;color:#ef4444;"><i class="fas fa-qrcode"></i></div>
+        <div class="fw-bold small">4. Get QR Code</div>
+        <div class="text-muted small">Use it for instant check-in upon arrival</div>
+      </div>
+    </div>
+  </div>
+
+</div>

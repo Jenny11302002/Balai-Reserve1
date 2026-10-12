@@ -1,0 +1,217 @@
+<% layout('layouts/auth') %>
+
+<% if (errors && errors.length > 0) { %>
+<div class="alert alert-danger">
+  <% for (const e of errors) { %>
+    <div><i class="fas fa-exclamation-circle me-1"></i><%= e.msg %></div>
+  <% } %>
+</div>
+<% } %>
+
+<h4 class="auth-title">Create Account</h4>
+<p class="auth-subtitle">Join Balai-Reserve and book your stay today</p>
+
+<%# Google Sign-In button — redirect flow %>
+<button type="button" id="googleSignInBtn"
+  class="btn w-100 mb-3 d-flex align-items-center justify-content-center gap-2"
+  style="background:#fff;border:1.5px solid #dadce0;color:#3c4043;font-weight:600;
+         border-radius:.625rem;padding:.55rem 1rem;font-size:.9rem;transition:box-shadow .2s;">
+  <svg width="18" height="18" viewBox="0 0 48 48" style="flex-shrink:0;">
+    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.18 1.48-4.97 2.31-8.16 2.31-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+  </svg>
+  Continue with Google
+</button>
+
+<div class="d-flex align-items-center gap-2 mb-3">
+  <div style="flex:1;height:1px;background:rgba(255,255,255,.15);"></div>
+  <span style="color:rgba(255,255,255,.45);font-size:.78rem;">or register with email</span>
+  <div style="flex:1;height:1px;background:rgba(255,255,255,.15);"></div>
+</div>
+
+<form action="/auth/register" method="POST" novalidate>
+  <div class="row g-2 mb-2">
+    <div class="col-6">
+      <label class="form-label">First Name <span class="text-danger">*</span></label>
+      <input type="text" name="first_name" class="form-control"
+        value="<%= old && old.first_name ? old.first_name : '' %>"
+        placeholder="Juan" required autocomplete="given-name" />
+    </div>
+    <div class="col-6">
+      <label class="form-label">Last Name <span class="text-danger">*</span></label>
+      <input type="text" name="last_name" class="form-control"
+        value="<%= old && old.last_name ? old.last_name : '' %>"
+        placeholder="dela Cruz" required autocomplete="family-name" />
+    </div>
+  </div>
+  <div class="mb-2">
+    <label class="form-label">Email Address <span class="text-danger">*</span></label>
+    <div class="input-group">
+      <span class="input-group-text"><i class="fas fa-envelope"></i></span>
+      <input type="email" name="email" class="form-control"
+        value="<%= old && old.email ? old.email : '' %>"
+        placeholder="your@email.com" required autocomplete="email" />
+    </div>
+  </div>
+  <div class="mb-2">
+    <label class="form-label">Phone <span style="color:rgba(255,255,255,.4);font-size:.75rem;">(optional)</span></label>
+    <div class="input-group">
+      <span class="input-group-text"><i class="fas fa-phone"></i></span>
+      <input type="text" name="phone" class="form-control"
+        value="<%= old && old.phone ? old.phone : '' %>"
+        placeholder="09XX-XXX-XXXX" autocomplete="tel" />
+    </div>
+  </div>
+  <div class="mb-2">
+    <label class="form-label">Password <span class="text-danger">*</span></label>
+    <div class="input-group">
+      <span class="input-group-text"><i class="fas fa-lock"></i></span>
+      <input type="password" name="password" id="regPassword" class="form-control"
+        placeholder="Minimum 8 characters" required minlength="8" autocomplete="new-password" />
+      <button type="button" class="input-group-text" id="togglePass">
+        <i class="fas fa-eye"></i>
+      </button>
+    </div>
+    <div id="pwStrength" class="mt-1" style="height:4px;border-radius:2px;background:#333;overflow:hidden;">
+      <div id="pwStrengthBar" style="height:100%;width:0;transition:width .3s,background .3s;"></div>
+    </div>
+  </div>
+  <div class="mb-3">
+    <label class="form-label">Confirm Password <span class="text-danger">*</span></label>
+    <div class="input-group">
+      <span class="input-group-text"><i class="fas fa-lock"></i></span>
+      <input type="password" name="password_confirm" id="regPasswordConfirm" class="form-control"
+        placeholder="Re-enter password" required autocomplete="new-password" />
+    </div>
+    <div id="pwMatchMsg" class="form-text" style="font-size:.72rem;"></div>
+  </div>
+  <div class="form-check mb-3">
+    <input class="form-check-input" type="checkbox" id="agreeTerms" name="agree_terms" required />
+    <label class="form-check-label" for="agreeTerms" style="font-size:.8rem;color:rgba(255,255,255,.7);">
+      I agree to the
+      <a href="/portal/inquire" target="_blank" style="color:#00e5ff;">Terms and Conditions</a>
+      and <a href="/portal/inquire" target="_blank" style="color:#00e5ff;">Privacy Policy</a>
+    </label>
+  </div>
+  <button type="submit" class="btn btn-primary btn-auth w-100">
+    <i class="fas fa-user-plus me-2"></i>Create Account
+  </button>
+</form>
+
+<div class="text-center mt-3">
+  <span style="color:rgba(255,255,255,.5);font-size:.82rem;">Already have an account?</span>
+  <a href="/auth/login" style="color:#00e5ff;font-size:.82rem;font-weight:600;margin-left:.35rem;">Sign in</a>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // Password toggle
+  var passInput = document.getElementById('regPassword');
+  var toggleBtn = document.getElementById('togglePass');
+  if (toggleBtn) {
+    toggleBtn.addEventListener('click', function () {
+      var icon = toggleBtn.querySelector('i');
+      if (passInput.type === 'password') {
+        passInput.type = 'text';
+        icon.classList.replace('fa-eye', 'fa-eye-slash');
+      } else {
+        passInput.type = 'password';
+        icon.classList.replace('fa-eye-slash', 'fa-eye');
+      }
+    });
+  }
+
+  // Password strength
+  var bar = document.getElementById('pwStrengthBar');
+  passInput.addEventListener('input', function () {
+    var v = passInput.value, score = 0;
+    if (v.length >= 8) score++;
+    if (/[A-Z]/.test(v)) score++;
+    if (/[0-9]/.test(v)) score++;
+    if (/[^A-Za-z0-9]/.test(v)) score++;
+    bar.style.width = (score * 25) + '%';
+    bar.style.background = ['','#ef4444','#f59e0b','#10b981','#10b981'][score] || '#ef4444';
+  });
+
+  // Password match
+  var confirmField = document.getElementById('regPasswordConfirm');
+  var matchMsg     = document.getElementById('pwMatchMsg');
+  function checkMatch() {
+    if (!confirmField.value) { matchMsg.textContent = ''; return; }
+    if (confirmField.value === passInput.value) {
+      matchMsg.style.color = '#4ade80'; matchMsg.textContent = 'Passwords match';
+    } else {
+      matchMsg.style.color = '#f87171'; matchMsg.textContent = 'Passwords do not match';
+    }
+  }
+  confirmField.addEventListener('input', checkMatch);
+  passInput.addEventListener('input', checkMatch);
+
+  // Google Sign-In — popup flow (primary), falls back to redirect if blocked
+  var googleBtn = document.getElementById('googleSignInBtn');
+  var ORIG_HTML = googleBtn.innerHTML;
+
+  googleBtn.addEventListener('click', function () {
+    googleBtn.disabled = true;
+    googleBtn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Opening Google…';
+
+    waitForFirebase(function () {
+      var provider = new firebase.auth.GoogleAuthProvider();
+      provider.addScope('profile');
+      provider.addScope('email');
+      provider.setCustomParameters({ prompt: 'select_account' });
+
+      firebase.auth().signInWithPopup(provider)
+        .then(function (result) {
+          return result.user.getIdToken(true);
+        })
+        .then(function (idToken) {
+          document.getElementById('__googleIdToken').value = idToken;
+          document.getElementById('__googleCallbackForm').submit();
+        })
+        .catch(function (err) {
+          console.error('[Google] popup error:', err.code, err.message);
+          googleBtn.disabled = false;
+          googleBtn.innerHTML = ORIG_HTML;
+          if (err.code === 'auth/popup-closed-by-user' || err.code === 'auth/cancelled-popup-request') {
+            showAlert('Sign-in cancelled.');
+          } else if (err.code === 'auth/popup-blocked') {
+            firebase.auth().signInWithRedirect(provider);
+          } else {
+            showAlert('Google Sign-In failed — ' + (err.message || 'please try again.'));
+          }
+        });
+    });
+  });
+
+  function showAlert(msg) {
+    var el = document.createElement('div');
+    el.className = 'alert alert-danger mt-2 py-2 small';
+    el.innerHTML = '<i class="fas fa-exclamation-circle me-1"></i>' + msg;
+    googleBtn.insertAdjacentElement('afterend', el);
+    setTimeout(function () { el.remove(); }, 5000);
+  }
+
+  function waitForFirebase(cb) {
+    if (window.firebase && window.firebase.auth) { cb(); return; }
+    var tries = 0;
+    var iv = setInterval(function () {
+      tries++;
+      if (window.firebase && window.firebase.auth) { clearInterval(iv); cb(); return; }
+      if (tries > 80) {
+        clearInterval(iv);
+        googleBtn.disabled = false;
+        googleBtn.innerHTML = ORIG_HTML;
+        showAlert(typeof firebase === 'undefined'
+          ? 'Firebase SDK failed to load — check your connection.'
+          : 'Firebase auth is not ready — try refreshing.');
+      }
+    }, 100);
+  }
+
+})();
+</script>

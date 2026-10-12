@@ -1,0 +1,65 @@
+<% layout('layouts/main') %>
+<div class="page-header">
+  <div>
+    <nav aria-label="breadcrumb"><ol class="breadcrumb mb-1"><li class="breadcrumb-item"><a href="/guests">Guests</a></li><li class="breadcrumb-item active"><%= guest.first_name %> <%= guest.last_name %></li></ol></nav>
+    <h3 class="mb-0"><%= guest.first_name %> <%= guest.last_name %></h3>
+  </div>
+  <div class="page-header-actions"><%- statusBadge(guest.status) %></div>
+</div>
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card mb-3">
+      <div class="card-body">
+        <h6 class="mb-3">Guest Information</h6>
+        <table class="table table-sm table-borderless mb-0">
+          <tr><th>Name</th><td><%= guest.first_name %> <%= guest.last_name %></td></tr>
+          <tr><th>Email</th><td><%= guest.email || '—' %></td></tr>
+          <tr><th>Phone</th><td><%= guest.phone || '—' %></td></tr>
+          <tr><th>Guests</th><td><%= guest.num_guests %></td></tr>
+          <tr><th>Status</th><td><%- statusBadge(guest.status) %></td></tr>
+          <tr><th>Check-in</th><td><%= formatDate(guest.check_in_date) %></td></tr>
+          <tr><th>Check-out</th><td><%= formatDate(guest.check_out_date) %></td></tr>
+          <tr><th>Res. Amount</th><td class="fw-bold"><%= formatPeso(guest.total_amount) %></td></tr>
+        </table>
+      </div>
+    </div>
+    <% if (checkIn) { %>
+    <div class="card mb-3">
+      <div class="card-body">
+        <h6 class="mb-2 text-success"><i class="fas fa-sign-in-alt me-1"></i>Checked In</h6>
+        <div class="text-muted small"><%= formatDateTime(checkIn.checked_in_at) %></div>
+        <div class="text-muted small">Method: <%= checkIn.method %></div>
+      </div>
+    </div>
+    <% } %>
+    <% if (checkOut) { %>
+    <div class="card mb-3">
+      <div class="card-body">
+        <h6 class="mb-2 text-secondary"><i class="fas fa-sign-out-alt me-1"></i>Checked Out</h6>
+        <div class="text-muted small"><%= formatDateTime(checkOut.checked_out_at) %></div>
+      </div>
+    </div>
+    <% } %>
+  </div>
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between"><h6 class="card-title mb-0"><i class="fas fa-history me-2"></i>Booking History</h6><a href="/reservations/<%= guest.reservation_id %>" class="btn btn-sm btn-outline-primary">Current Reservation</a></div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+          <thead><tr><th>Booking Ref</th><th>Type</th><th>Date</th><th>Amount</th><th>Status</th></tr></thead>
+          <tbody>
+            <% for (const h of history) { %>
+            <tr>
+              <td><a href="/reservations/<%= h.id %>"><code class="small"><%= h.booking_ref %></code></a></td>
+              <td><span class="badge bg-light text-dark small"><%= h.reservation_type %></span></td>
+              <td class="small"><%= formatDate(h.check_in_date || h.event_date) %></td>
+              <td><%= formatPeso(h.total_amount) %></td>
+              <td><%- statusBadge(h.status) %></td>
+            </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

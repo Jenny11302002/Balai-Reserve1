@@ -1,0 +1,412 @@
+<% layout('layouts/main') %>
+
+<div class="page-header">
+  <div>
+    <h3 class="mb-1"><i class="fas fa-cog me-2"></i>Settings</h3>
+    <p class="text-muted mb-0">Configure resort details, payment accounts, and booking rules</p>
+  </div>
+</div>
+
+<!-- Tab Nav -->
+<ul class="nav nav-tabs mb-4 settings-tabs" id="settingsTabs">
+  <li class="nav-item">
+    <a class="nav-link <%= activeTab === 'payment' ? 'active' : '' %>"
+      href="/settings?tab=payment">
+      <i class="fas fa-credit-card me-1"></i>Payment Methods
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link <%= activeTab === 'general' ? 'active' : '' %>"
+      href="/settings?tab=general">
+      <i class="fas fa-building me-1"></i>Resort Info
+    </a>
+  </li>
+  <li class="nav-item">
+    <a class="nav-link <%= activeTab === 'booking' ? 'active' : '' %>"
+      href="/settings?tab=booking">
+      <i class="fas fa-calendar-check me-1"></i>Booking Rules
+    </a>
+  </li>
+</ul>
+
+<style>
+  /* Settings tab labels: readable dark text (the theme otherwise renders them
+     near-white/invisible on the light background). Use !important to override. */
+  .settings-tabs .nav-link {
+    color: #475569 !important;
+    font-weight: 600;
+    background: transparent;
+    border: 1px solid transparent;
+  }
+  .settings-tabs .nav-link:hover {
+    color: #4f46e5 !important;
+    border-color: #e2e8f0 #e2e8f0 #dee2e6;
+  }
+  .settings-tabs .nav-link.active {
+    color: #4f46e5 !important;
+    background: #fff;
+    border-color: #dee2e6 #dee2e6 #fff;
+  }
+</style>
+
+
+<%# ══════════════════════════════════════════════════
+    TAB: PAYMENT METHODS
+    ══════════════════════════════════════════════════ %>
+<% if (activeTab === 'payment') { %>
+<form action="/settings/payment" method="POST" enctype="multipart/form-data">
+
+  <div class="row g-4">
+
+    <%# ── GCash ─────────────────────────────────── %>
+    <div class="col-12">
+      <div class="card border-success">
+        <div class="card-header bg-success bg-opacity-10">
+          <h6 class="card-title mb-0 text-success">
+            <i class="fas fa-mobile-alt me-2"></i>GCash
+          </h6>
+        </div>
+        <div class="card-body">
+          <div class="row g-3">
+            <div class="col-md-6">
+              <label class="form-label required">GCash Number</label>
+              <div class="input-group">
+                <span class="input-group-text"><i class="fas fa-phone"></i></span>
+                <input type="text" name="gcash_number" class="form-control"
+                  value="<%= siteSettings.gcash_number || '' %>"
+                  placeholder="e.g. 09171234567"
+                  pattern="^09\d{9}$"
+                  title="Enter a valid 11-digit Philippine mobile number starting with 09"
+                  maxlength="11" />
+              </div>
+              <div class="form-text">This number will appear as a clickable <code>tel:</code> link on mobile — guests can tap to open GCash directly.</div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label required">GCash Account Name</label>
+              <input type="text" name="gcash_name" class="form-control"
+                value="<%= siteSettings.gcash_name || '' %>"
+                placeholder="e.g. Juan Dela Cruz" />
+              <div class="form-text">Full name exactly as registered in GCash.</div>
+            </div>
+
+            <%# QR Code upload %>
+            <div class="col-12">
+              <label class="form-label">GCash QR Code <span class="text-muted small">(recommended — improves scan reliability on mobile)</span></label>
+              <div class="row g-3 align-items-start">
+
+                <%# Current QR preview %>
+                <div class="col-auto">
+                  <% if (siteSettings.gcash_qr_path) { %>
+                  <div class="text-center">
+                    <img src="<%= siteSettings.gcash_qr_path %>" alt="GCash QR"
+                      id="qrPreview"
+                      style="width:160px;height:160px;object-fit:contain;border:3px solid #16a34a;border-radius:.5rem;padding:4px;background:#fff;"
+                      onerror="this.style.display='none'" />
+                    <div class="text-muted mt-1" style="font-size:.72rem;">Current QR</div>
+                    <%# The Remove button submits the SEPARATE remove-qr form declared
+                        after the main form (via the HTML5 form= attribute) — it must
+                        NOT be a nested <form> and must NOT save other fields. %>
+                    <button type="submit" form="removeQrForm" class="btn btn-xs btn-outline-danger mt-1"
+                      data-confirm="Remove the current GCash QR code image only? This will not change your other payment settings."
+                      data-confirm-title="Remove QR Code"
+                      data-confirm-type="danger"
+                      data-confirm-ok="Remove">
+                      <i class="fas fa-trash me-1"></i>Remove
+                    </button>
+                  </div>
+                  <% } else { %>
+                  <div class="text-center border rounded p-3" style="width:160px;color:#9ca3af;">
+                    <i class="fas fa-qrcode fa-3x d-block mb-2" style="opacity:.3;"></i>
+                    <div style="font-size:.72rem;">No QR uploaded yet</div>
+                  </div>
+                  <% } %>
+                </div>
+
+                <div class="col">
+                  <label class="form-label small fw-semibold">Upload New QR Image</label>
+                  <input type="file" name="gcash_qr_image" id="gcashQrInput"
+                    class="form-control form-control-sm"
+                    accept=".jpg,.jpeg,.png,.webp" />
+                  <div class="form-text">
+                    JPG or PNG, max 5 MB. For best scan quality:<br>
+                    • Export the QR from the GCash app at full resolution<br>
+                    • Do not crop or compress — keep it as-is<br>
+                    • Minimum 400×400 px recommended
+                  </div>
+                  <%# Live preview of newly selected file %>
+                  <div id="newQrPreviewWrap" class="mt-2" style="display:none;">
+                    <div class="text-muted small mb-1">Preview of new QR:</div>
+                    <img id="newQrPreview"
+                      style="width:140px;height:140px;object-fit:contain;border:2px dashed #16a34a;border-radius:.5rem;padding:3px;background:#fff;" />
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <%# ── Maya ──────────────────────────────────── %>
+    <div class="col-md-6">
+      <div class="card border-purple" style="border-color:#9333ea !important;">
+        <div class="card-header" style="background:rgba(147,51,234,.08);">
+          <h6 class="card-title mb-0" style="color:#9333ea;">
+            <i class="fas fa-wallet me-2"></i>Maya (PayMaya)
+          </h6>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label required">Maya Number</label>
+            <div class="input-group">
+              <span class="input-group-text"><i class="fas fa-phone"></i></span>
+              <input type="text" name="maya_number" class="form-control"
+                value="<%= siteSettings.maya_number || '' %>"
+                placeholder="e.g. 09171234567"
+                pattern="^09\d{9}$"
+                title="Enter a valid 11-digit PH mobile number starting with 09"
+                maxlength="11" />
+            </div>
+            <div class="form-text">Tappable tel: link on mobile.</div>
+          </div>
+          <div>
+            <label class="form-label required">Maya Account Name</label>
+            <input type="text" name="maya_name" class="form-control"
+              value="<%= siteSettings.maya_name || '' %>"
+              placeholder="e.g. Juan Dela Cruz" />
+          </div>
+          <div class="mt-3">
+            <label class="form-label">Maya QR Code</label>
+            <div class="row g-3 align-items-start">
+              <div class="col-auto">
+                <% if (siteSettings.maya_qr_path) { %>
+                <div class="text-center">
+                  <img src="<%= siteSettings.maya_qr_path %>" alt="Maya QR"
+                    style="width:160px;height:160px;object-fit:contain;border:3px solid #9333ea;border-radius:.5rem;padding:4px;background:#fff;"
+                    onerror="this.style.display='none'" />
+                  <div class="text-muted mt-1" style="font-size:.72rem;">Current QR</div>
+                  <button type="submit" form="removeMayaQrForm" class="btn btn-xs btn-outline-danger mt-1"
+                    data-confirm="Remove the current Maya QR code image only? This will not change your other payment settings."
+                    data-confirm-title="Remove QR Code"
+                    data-confirm-type="danger"
+                    data-confirm-ok="Remove">
+                    <i class="fas fa-trash me-1"></i>Remove
+                  </button>
+                </div>
+                <% } else { %>
+                <div class="text-center border rounded p-3" style="width:160px;color:#9ca3af;">
+                  <i class="fas fa-qrcode fa-3x d-block mb-2" style="opacity:.3;"></i>
+                  <div style="font-size:.72rem;">No QR uploaded yet</div>
+                </div>
+                <% } %>
+              </div>
+              <div class="col">
+                <label class="form-label small fw-semibold">Upload New QR Image</label>
+                <input type="file" name="maya_qr_image" id="mayaQrInput"
+                  class="form-control form-control-sm"
+                  accept=".jpg,.jpeg,.png,.webp" />
+                <div class="form-text">JPG, PNG, or WEBP, max 5 MB.</div>
+                <div id="newMayaQrPreviewWrap" class="mt-2" style="display:none;">
+                  <div class="text-muted small mb-1">Preview of new QR:</div>
+                  <img id="newMayaQrPreview"
+                    style="width:140px;height:140px;object-fit:contain;border:2px dashed #9333ea;border-radius:.5rem;padding:3px;background:#fff;" />
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <%# ── Bank Transfer ───────────────────────── %>
+    <div class="col-md-6">
+      <div class="card border-primary">
+        <div class="card-header bg-primary bg-opacity-10">
+          <h6 class="card-title mb-0 text-primary">
+            <i class="fas fa-university me-2"></i>Bank Transfer
+          </h6>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <label class="form-label">BDO Account Number</label>
+            <input type="text" name="bank_bdo" class="form-control"
+              value="<%= siteSettings.bank_bdo || '' %>"
+              placeholder="e.g. 0123-4567-8901" />
+          </div>
+          <div class="mb-3">
+            <label class="form-label">BPI Account Number</label>
+            <input type="text" name="bank_bpi" class="form-control"
+              value="<%= siteSettings.bank_bpi || '' %>"
+              placeholder="e.g. 1234-5678-9012" />
+          </div>
+          <div>
+            <label class="form-label required">Account Holder Name</label>
+            <input type="text" name="bank_name" class="form-control"
+              value="<%= siteSettings.bank_name || '' %>"
+              placeholder="e.g. Balai Miciano Resort" />
+            <div class="form-text">Must match the bank account name exactly.</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- /row -->
+
+  <%# Live preview of what guests will see %>
+  <div class="card mt-4 border-0 bg-light">
+    <div class="card-header bg-transparent border-0 pb-0">
+      <h6 class="text-muted mb-0"><i class="fas fa-eye me-1"></i>Guest-facing preview</h6>
+    </div>
+    <div class="card-body">
+      <div class="d-flex flex-wrap gap-3">
+        <div class="p-3 rounded-3 border bg-white flex-fill" style="min-width:200px;">
+          <div class="small fw-bold mb-1"><i class="fas fa-mobile-alt me-1" style="color:#16a34a;"></i>GCash</div>
+          <div class="small text-muted">Number: <a href="tel:<%= (siteSettings.gcash_number||'').replace(/\D/g,'') %>" class="fw-bold text-dark"><%= siteSettings.gcash_number || '—' %></a></div>
+          <div class="small text-muted">Name: <strong class="text-dark"><%= siteSettings.gcash_name || '—' %></strong></div>
+          <% if (siteSettings.gcash_qr_path) { %><div class="mt-2"><img src="<%= siteSettings.gcash_qr_path %>" style="height:60px;border-radius:.25rem;" /></div><% } %>
+        </div>
+        <div class="p-3 rounded-3 border bg-white flex-fill" style="min-width:200px;">
+          <div class="small fw-bold mb-1"><i class="fas fa-wallet me-1" style="color:#9333ea;"></i>Maya</div>
+          <div class="small text-muted">Number: <a href="tel:<%= (siteSettings.maya_number||'').replace(/\D/g,'') %>" class="fw-bold text-dark"><%= siteSettings.maya_number || '—' %></a></div>
+          <div class="small text-muted">Name: <strong class="text-dark"><%= siteSettings.maya_name || '—' %></strong></div>
+          <% if (siteSettings.maya_qr_path) { %><div class="mt-2"><img src="<%= siteSettings.maya_qr_path %>" alt="Maya QR" style="height:60px;border-radius:.25rem;" /></div><% } %>
+        </div>
+        <div class="p-3 rounded-3 border bg-white flex-fill" style="min-width:200px;">
+          <div class="small fw-bold mb-1"><i class="fas fa-university me-1" style="color:#2563eb;"></i>Bank Transfer</div>
+          <div class="small text-muted">BDO: <strong class="text-dark"><%= siteSettings.bank_bdo || '—' %></strong></div>
+          <div class="small text-muted">BPI: <strong class="text-dark"><%= siteSettings.bank_bpi || '—' %></strong></div>
+          <div class="small text-muted">Name: <strong class="text-dark"><%= siteSettings.bank_name || '—' %></strong></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="mt-4 d-flex gap-2">
+    <button type="submit" class="btn btn-primary px-4">
+      <i class="fas fa-save me-1"></i>Save / Update Payment Settings
+    </button>
+  </div>
+</form>
+
+<%# Standalone remove-QR form (NOT nested inside the payment form). The Remove
+    button above targets this via form="removeQrForm". It only removes the QR
+    image and never saves the GCash number or other fields. %>
+<form action="/settings/payment/remove-qr" method="POST" id="removeQrForm" class="d-none"></form>
+<form action="/settings/payment/remove-maya-qr" method="POST" id="removeMayaQrForm" class="d-none"></form>
+<% } %>
+
+
+<%# ══════════════════════════════════════════════════
+    TAB: GENERAL / RESORT INFO
+    ══════════════════════════════════════════════════ %>
+<% if (activeTab === 'general') { %>
+<form action="/settings/general" method="POST">
+  <div class="card">
+    <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-building me-2"></i>Resort Information</h6></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-6">
+          <label class="form-label required">Resort Name</label>
+          <input type="text" name="resort_name" class="form-control" value="<%= siteSettings.resort_name || '' %>" required />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Tagline</label>
+          <input type="text" name="resort_tagline" class="form-control" value="<%= siteSettings.resort_tagline || '' %>" />
+        </div>
+        <div class="col-12">
+          <label class="form-label">Address</label>
+          <input type="text" name="resort_address" class="form-control" value="<%= siteSettings.resort_address || '' %>" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Phone</label>
+          <input type="text" name="resort_phone" class="form-control" value="<%= siteSettings.resort_phone || '' %>" />
+        </div>
+        <div class="col-md-6">
+          <label class="form-label">Email</label>
+          <input type="email" name="resort_email" class="form-control" value="<%= siteSettings.resort_email || '' %>" />
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mt-3">
+    <button type="submit" class="btn btn-primary px-4"><i class="fas fa-save me-1"></i>Save Resort Settings</button>
+  </div>
+</form>
+<% } %>
+
+
+<%# ══════════════════════════════════════════════════
+    TAB: BOOKING RULES
+    ══════════════════════════════════════════════════ %>
+<% if (activeTab === 'booking') { %>
+<form action="/settings/booking" method="POST">
+  <div class="card">
+    <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-calendar-check me-2"></i>Booking Rules</h6></div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-md-4">
+          <label class="form-label required">Default Check-in Time</label>
+          <input type="time" name="check_in_time" class="form-control" value="<%= siteSettings.check_in_time || '14:00' %>" required />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label required">Default Check-out Time</label>
+          <input type="time" name="check_out_time" class="form-control" value="<%= siteSettings.check_out_time || '12:00' %>" required />
+        </div>
+        <div class="col-md-4">
+          <label class="form-label required">Downpayment Percentage (%)</label>
+          <div class="input-group">
+            <input type="number" name="downpayment_percent" class="form-control"
+              value="<%= siteSettings.downpayment_percent || '50' %>"
+              min="1" max="100" step="1" required />
+            <span class="input-group-text">%</span>
+          </div>
+        </div>
+        <div class="col-12">
+          <label class="form-label">Cancellation Policy</label>
+          <textarea name="cancellation_policy" class="form-control" rows="4"><%= siteSettings.cancellation_policy || '' %></textarea>
+          <div class="form-text">This text is shown to guests in the chatbot and on booking pages.</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="mt-3">
+    <button type="submit" class="btn btn-primary px-4"><i class="fas fa-save me-1"></i>Save Booking Rules</button>
+  </div>
+</form>
+<% } %>
+
+<script>
+// Live QR image preview before upload
+(function () {
+  var input   = document.getElementById('gcashQrInput');
+  var wrap    = document.getElementById('newQrPreviewWrap');
+  var preview = document.getElementById('newQrPreview');
+  if (!input) return;
+  input.addEventListener('change', function () {
+    var file = this.files[0];
+    if (!file) { wrap.style.display = 'none'; return; }
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      preview.src = e.target.result;
+      wrap.style.display = '';
+    };
+    reader.readAsDataURL(file);
+  });
+})();
+(function () {
+  var input = document.getElementById('mayaQrInput');
+  var wrap = document.getElementById('newMayaQrPreviewWrap');
+  var preview = document.getElementById('newMayaQrPreview');
+  if (!input) return;
+  input.addEventListener('change', function () {
+    var file = this.files[0];
+    if (!file) { wrap.style.display = 'none'; return; }
+    var reader = new FileReader();
+    reader.onload = function (e) {
+      preview.src = e.target.result;
+      wrap.style.display = '';
+    };
+    reader.readAsDataURL(file);
+  });
+})();
+</script>

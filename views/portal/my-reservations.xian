@@ -1,0 +1,52 @@
+<% layout('layouts/portal') %>
+<div class="container-lg px-4 py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4">
+    <div><h4 class="fw-bold mb-1">My Bookings</h4><p class="text-muted mb-0">All your reservation history</p></div>
+    <a href="/portal/book" class="btn btn-primary btn-sm"><i class="fas fa-plus me-1"></i>New Booking</a>
+  </div>
+
+  <% if (!reservations || reservations.length === 0) { %>
+  <div class="text-center py-5 bg-white rounded-3 border">
+    <i class="fas fa-calendar-times fa-3x text-muted mb-3 d-block"></i>
+    <h5 class="text-muted">No bookings yet.</h5>
+    <p class="text-muted small">Make your first reservation today!</p>
+    <a href="/portal/book" class="btn btn-primary mt-2"><i class="fas fa-calendar-plus me-1"></i>Book Now</a>
+  </div>
+  <% } else { %>
+    <% for (const r of reservations) { %>
+    <div class="booking-item">
+      <div class="row g-3 align-items-center">
+        <div class="col-auto">
+          <div class="text-center p-2 rounded-3 bg-light" style="min-width:50px;">
+            <div style="font-size:1.5rem;color:#4f46e5;">
+              <% if (r.reservation_type==='room') { %><i class="fas fa-bed"></i>
+              <% } else if (r.reservation_type==='event') { %><i class="fas fa-star"></i>
+              <% } else if (r.reservation_type==='venue') { %><i class="fas fa-map-marker-alt"></i>
+              <% } else { %><i class="fas fa-home"></i><% } %>
+            </div>
+            <div class="small text-muted mt-1"><%= r.reservation_type %></div>
+          </div>
+        </div>
+        <div class="col">
+          <div class="d-flex flex-wrap gap-2 align-items-center mb-1">
+            <span class="booking-ref"><%= r.booking_ref %></span>
+            <%- statusBadge(r.status) %>
+            <%- statusBadge(r.payment_status) %>
+          </div>
+          <div class="small text-muted">
+            <% if (r.check_in_date) { %><i class="fas fa-calendar me-1"></i><%= formatDate(r.check_in_date) %> → <%= formatDate(r.check_out_date) %><% } %>
+            <% if (r.event_date) { %><i class="fas fa-calendar me-1"></i><%= formatDate(r.event_date) %><% } %>
+            <span class="ms-2"><i class="fas fa-users me-1"></i><%= r.num_guests %> guests</span>
+          </div>
+          <% if (r.special_requests) { %><div class="small text-muted mt-1 fst-italic"><%= r.special_requests.slice(0,80) %></div><% } %>
+        </div>
+        <div class="col-auto text-end">
+          <div class="fw-bold text-primary"><%= formatPeso(r.total_amount) %></div>
+          <div class="small text-muted">Booked <%= formatDate(r.created_at) %></div>
+          <a href="/portal/my-reservations/<%= r.id %>" class="btn btn-sm btn-outline-primary mt-1">View Details</a>
+        </div>
+      </div>
+    </div>
+    <% } %>
+  <% } %>
+</div>

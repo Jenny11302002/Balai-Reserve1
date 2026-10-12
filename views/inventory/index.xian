@@ -1,0 +1,136 @@
+<% layout('layouts/main') %>
+<div class="page-header">
+  <div><h3 class="mb-1">Inventory</h3><p class="text-muted mb-0">Monitor all resort inventory and equipment</p></div>
+  <div class="page-header-actions">
+    <% if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'staff')) { %>
+    <a href="/inventory/equipment/new" class="btn btn-sm btn-outline-primary"><i class="fas fa-plus me-1"></i>Add Equipment</a>
+    <a href="/inventory/new" class="btn btn-sm btn-primary"><i class="fas fa-plus me-1"></i>Add Item</a>
+    <% } %>
+  </div>
+</div>
+
+<% if (alertCount > 0) { %>
+<div class="alert alert-warning d-flex align-items-center gap-2 mb-3">
+  <i class="fas fa-exclamation-triangle fa-lg"></i>
+  <div><strong><%= alertCount %> item(s)</strong> are below reorder level. <a href="/inventory?alert=low" class="alert-link">View low stock items</a></div>
+</div>
+<% } %>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="GET" action="/inventory" class="row g-2 align-items-end">
+      <div class="col-12 col-md-4"><input type="text" name="search" value="<%= filters.search %>" class="form-control form-control-sm" placeholder="Item name or code..." /></div>
+      <div class="col-6 col-md-2"><select name="category" class="form-select form-select-sm"><option value="">All Categories</option><% for (const c of categories) { %><option value="<%= c.id %>" <%= String(filters.category) === String(c.id) ? 'selected' : '' %>><%= c.name %></option><% } %></select></div>
+      <div class="col-6 col-md-2"><select name="alert" class="form-select form-select-sm"><option value="">All Items</option><option value="low" <%= filters.alert === 'low' ? 'selected' : '' %>>Low Stock Only</option></select></div>
+      <div class="col-6 col-md-2"><button type="submit" class="btn btn-sm btn-primary w-100"><i class="fas fa-search"></i></button></div>
+      <div class="col-6 col-md-2"><a href="/inventory" class="btn btn-sm btn-outline-secondary w-100">Clear</a></div>
+    </form>
+  </div>
+</div>
+
+<!-- Inventory Items Table -->
+<div class="card mb-4">
+  <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-boxes me-2"></i>Inventory Items</h6></div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr><th>Code</th><th>Name</th><th>Category</th><th>Unit</th><th class="text-center">Total</th><th class="text-center">Available</th><th class="text-center">Reserved</th><th class="text-center">Damaged</th><th>Status</th><th>Action</th></tr></thead>
+        <tbody>
+          <% if (!items || items.length === 0) { %>
+          <tr><td colspan="10" class="text-center py-4 text-muted">No items found.</td></tr>
+          <% } else { %>
+            <% for (const item of items) { %>
+            <tr class="<%= item.available_qty <= item.reorder_level ? 'table-warning' : '' %>">
+              <td><code class="small"><%= item.item_code %></code></td>
+              <td class="fw-medium"><%= item.name %></td>
+              <td><span class="badge bg-light text-dark small"><%= item.category_name %></span></td>
+              <td class="small"><%= item.unit %></td>
+              <td class="text-center"><%= item.total_qty %></td>
+              <td class="text-center"><strong class="<%= item.available_qty <= item.reorder_level ? 'text-danger' : 'text-success' %>"><%= item.available_qty %></strong></td>
+              <td class="text-center text-primary"><%= item.reserved_qty %></td>
+              <td class="text-center text-danger"><%= item.damaged_qty %></td>
+              <td>
+                <% if (item.available_qty <= 0) { %><span class="badge badge-danger">Out of Stock</span>
+                <% } else if (item.available_qty <= item.reorder_level) { %><span class="badge badge-warning">Low Stock</span>
+                <% } else { %><span class="badge badge-success">OK</span><% } %>
+              </td>
+              <td>
+                <% if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'staff')) { %>
+                <button class="btn btn-xs btn-outline-secondary" data-bs-toggle="modal" data-bs-target="#adjustModal" data-id="<%= item.id %>" data-name="<%= item.name %>">Adjust</button>
+                <% } %>
+              </td>
+            </tr>
+            <% } %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Equipment Table -->
+<div class="card">
+  <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-tools me-2"></i>Event Equipment</h6></div>
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr><th>Code</th><th>Name</th><th>Category</th><th class="text-center">Total Qty</th><th class="text-center">Available</th><th>Condition</th></tr></thead>
+        <tbody>
+          <% if (!equipment || equipment.length === 0) { %>
+          <tr><td colspan="6" class="text-center py-4 text-muted">No equipment found.</td></tr>
+          <% } else { %>
+            <% for (const eq of equipment) { %>
+            <tr>
+              <td><code class="small"><%= eq.equipment_code %></code></td>
+              <td class="fw-medium"><%= eq.name %></td>
+              <td><span class="badge bg-light text-dark small"><%= eq.category_name || '—' %></span></td>
+              <td class="text-center"><%= eq.quantity %></td>
+              <td class="text-center fw-bold <%= eq.available_qty === 0 ? 'text-danger' : 'text-success' %>"><%= eq.available_qty %></td>
+              <td><%- statusBadge(eq.condition) %></td>
+            </tr>
+            <% } %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+
+<!-- Adjust Modal -->
+<div class="modal fade" id="adjustModal" tabindex="-1">
+  <div class="modal-dialog modal-sm">
+    <div class="modal-content">
+      <div class="modal-header"><h6 class="modal-title">Adjust Inventory</h6><button type="button" class="btn-close" data-bs-dismiss="modal"></button></div>
+      <form id="adjustForm" method="POST">
+        <div class="modal-body">
+          <p class="fw-medium" id="adjustItemName"></p>
+          <div class="mb-3">
+            <label class="form-label">Adjustment Type</label>
+            <select name="adjust_type" class="form-select">
+              <option value="add">Add (received)</option>
+              <option value="remove">Remove (disposed)</option>
+              <option value="damage">Mark as Damaged</option>
+              <option value="repair">Repaired (restore)</option>
+            </select>
+          </div>
+          <div class="mb-3"><label class="form-label required">Quantity</label><input type="number" name="quantity" class="form-control" value="1" min="1" required /></div>
+          <div class="mb-3"><label class="form-label">Notes</label><input type="text" name="notes" class="form-control" placeholder="Reason..." /></div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Cancel</button>
+          <button type="submit" class="btn btn-primary btn-sm">Save Adjustment</button>
+        </div>
+      </form>
+    </div>
+  </div>
+</div>
+<script>
+document.getElementById('adjustModal').addEventListener('show.bs.modal', function(e) {
+  const btn  = e.relatedTarget;
+  const id   = btn.dataset.id;
+  const name = btn.dataset.name;
+  document.getElementById('adjustItemName').textContent = name;
+  document.getElementById('adjustForm').action = '/inventory/' + id + '/adjust';
+});
+</script>

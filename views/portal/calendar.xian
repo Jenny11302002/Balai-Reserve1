@@ -1,0 +1,69 @@
+<div class="container-lg px-4 py-5">
+  <div class="d-flex flex-wrap justify-content-between align-items-center mb-3 gap-2">
+    <div>
+      <h4 class="fw-bold mb-1"><i class="fas fa-calendar-alt me-2 text-primary"></i>Availability Calendar</h4>
+      <p class="text-muted small mb-0">Coloured blocks show dates that are already booked. Click any open date to start a booking.</p>
+    </div>
+    <div class="d-flex flex-wrap gap-3 align-items-center small">
+      <span><span class="cal-dot" style="background:#6366f1;"></span>Rooms</span>
+      <span><span class="cal-dot" style="background:#f97316;"></span>Cottages</span>
+      <span><span class="cal-dot" style="background:#10b981;"></span>Venues / Events</span>
+    </div>
+  </div>
+
+  <div class="bg-white rounded-3 border shadow-sm p-3 p-md-4">
+    <div id="portalCalendar"></div>
+    <p class="text-muted small mt-3 mb-0">
+      <i class="fas fa-info-circle me-1"></i>
+      Tip: pick a start date to book a room or cottage. You can adjust the exact dates and choose your room, venue, or cottage on the booking page.
+    </p>
+  </div>
+</div>
+
+<style>
+  .cal-dot { display:inline-block;width:10px;height:10px;border-radius:50%;margin-right:5px;vertical-align:middle; }
+  #portalCalendar { max-width:100%; }
+  .fc .fc-daygrid-day.fc-day-past { background:#f9fafb; }
+  .fc .fc-daygrid-day:hover { background:#eef2ff; cursor:pointer; }
+  .fc-event { font-size:.72rem; border:none; }
+</style>
+
+<link  href="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.css" rel="stylesheet" />
+<script src="https://cdn.jsdelivr.net/npm/fullcalendar@6.1.11/index.global.min.js"></script>
+<script>
+(function () {
+  var el = document.getElementById('portalCalendar');
+  if (!el || typeof FullCalendar === 'undefined') return;
+
+  function toISO(d) {
+    // Local date -> YYYY-MM-DD (avoids UTC off-by-one).
+    var y = d.getFullYear(), m = String(d.getMonth() + 1).padStart(2, '0'), day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  var today = new Date(); today.setHours(0, 0, 0, 0);
+
+  var calendar = new FullCalendar.Calendar(el, {
+    initialView: 'dayGridMonth',
+    height: 'auto',
+    firstDay: 0,
+    headerToolbar: { left: 'prev,next today', center: 'title', right: '' },
+    events: '/portal/calendar/feed',
+    displayEventTime: false,
+    selectable: false,
+    dateClick: function (info) {
+      var clicked = new Date(info.date); clicked.setHours(0, 0, 0, 0);
+      if (clicked < today) {
+        return; // ignore past dates
+      }
+      // Start a booking prefilled with the chosen check-in date (+1 day checkout).
+      var checkin = info.dateStr;
+      var co = new Date(info.date); co.setDate(co.getDate() + 1);
+      var checkout = toISO(co);
+      window.location.href = '/portal/book?checkin=' + encodeURIComponent(checkin) + '&checkout=' + encodeURIComponent(checkout);
+    },
+  });
+
+  calendar.render();
+})();
+</script>

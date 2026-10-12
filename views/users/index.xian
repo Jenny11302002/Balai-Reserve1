@@ -1,0 +1,115 @@
+<% layout('layouts/main') %>
+
+<div class="page-header">
+  <div><h3 class="mb-1">User Management</h3><p class="text-muted mb-0">Manage staff accounts and system access</p></div>
+  <div class="page-header-actions">
+    <a href="/users/new" class="btn btn-primary btn-sm"><i class="fas fa-user-plus me-1"></i>Add Staff User</a>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="GET" action="/users" class="row g-2 align-items-end">
+      <div class="col-12 col-md-4">
+        <input type="text" name="search" value="<%= filters.search %>" class="form-control form-control-sm" placeholder="Name or email…" />
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="role" class="form-select form-select-sm">
+          <option value="">All Roles</option>
+          <% for (const r of roles) { %>
+            <option value="<%= r.name %>" <%= filters.role === r.name ? 'selected' : '' %>><%= r.label %></option>
+          <% } %>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="status" class="form-select form-select-sm">
+          <option value="">All Statuses</option>
+          <option value="active"   <%= filters.status === 'active'   ? 'selected' : '' %>>Active</option>
+          <option value="inactive" <%= filters.status === 'inactive' ? 'selected' : '' %>>Inactive</option>
+        </select>
+      </div>
+      <div class="col-6 col-md-2"><button type="submit" class="btn btn-sm btn-primary w-100"><i class="fas fa-search me-1"></i>Search</button></div>
+      <div class="col-6 col-md-2"><a href="/users" class="btn btn-sm btn-outline-secondary w-100">Clear</a></div>
+    </form>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>User</th>
+            <th>Email</th>
+            <th class="role-badge-cell">Role</th>
+            <th class="hide-md">Phone</th>
+            <th class="hide-md">Last Login</th>
+            <th>Status</th>
+            <th class="text-end">Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!users || users.length === 0) { %>
+          <tr><td colspan="7" class="text-center py-4 text-muted">No users found.</td></tr>
+          <% } else { %>
+            <% for (const u of users) { %>
+            <tr class="<%= u.is_active ? '' : 'opacity-50' %>">
+              <td>
+                <div class="d-flex align-items-center gap-2">
+                  <div class="user-avatar-sm flex-shrink-0" style="width:34px;height:34px;font-size:.75rem;">
+                    <span><%= u.first_name.charAt(0) %><%= u.last_name.charAt(0) %></span>
+                  </div>
+                  <div>
+                    <a href="/users/<%= u.id %>" class="fw-medium text-decoration-none text-dark"><%= u.first_name %> <%= u.last_name %></a>
+                    <% if (u.id === currentUser.id) { %><span class="badge bg-primary ms-1 small">You</span><% } %>
+                  </div>
+                </div>
+              </td>
+              <td class="text-muted small"><%= u.email %></td>
+              <td class="role-badge-cell">
+                <span class="badge <%= u.role_name === 'admin' ? 'bg-primary' : u.role_name === 'staff' ? 'bg-success' : 'bg-secondary' %>">
+                  <%= u.role_label %>
+                </span>
+              </td>
+              <td class="small text-muted hide-md"><%= u.phone || '—' %></td>
+              <td class="small text-muted hide-md"><%= formatDateTime(u.last_login) || 'Never' %></td>
+              <td>
+                <% if (u.is_active) { %>
+                  <span class="badge badge-success">Active</span>
+                <% } else { %>
+                  <span class="badge badge-secondary">Inactive</span>
+                <% } %>
+              </td>
+              <td class="text-end">
+                <div class="d-flex gap-1 justify-content-end">
+                  <a href="/users/<%= u.id %>/edit"
+                    class="btn btn-xs btn-outline-secondary"
+                    title="Edit <%= u.first_name %> <%= u.last_name %>'s details">
+                    <i class="fas fa-edit"></i>
+                  </a>
+                  <% if (u.id !== currentUser.id) { %>
+                  <form action="/users/<%= u.id %>/toggle" method="POST" class="d-inline">
+                    <button type="submit"
+                      class="btn btn-xs <%= u.is_active ? 'btn-outline-danger' : 'btn-outline-success' %>"
+                      title="<%= u.is_active ? 'Deactivate — prevent this user from logging in' : 'Activate — restore login access' %>"
+                      data-confirm="<%= u.is_active ? 'Deactivate' : 'Activate' %> the account for <%= u.first_name %> <%= u.last_name %>?<%= u.is_active ? ' They will no longer be able to log in.' : ' They will regain login access.' %>"
+                      data-confirm-title="<%= u.is_active ? 'Deactivate User' : 'Activate User' %>"
+                      data-confirm-type="<%= u.is_active ? 'danger' : 'primary' %>"
+                      data-confirm-ok="<%= u.is_active ? 'Deactivate' : 'Activate' %>">
+                      <i class="fas fa-<%= u.is_active ? 'ban' : 'check' %>"></i>
+                    </button>
+                  </form>
+                  <% } %>
+                </div>
+              </td>
+            </tr>
+            <% } %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card-footer"><%include('partials/pagination')%></div>
+</div>

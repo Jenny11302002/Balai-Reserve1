@@ -1,0 +1,120 @@
+<% layout('layouts/main') %>
+
+<div class="page-header">
+  <div><h3 class="mb-1">Payments</h3><p class="text-muted mb-0">All payment records and transactions</p></div>
+  <div class="page-header-actions">
+    <a href="/reports/export/sales" class="btn btn-sm btn-outline-success"><i class="fas fa-download me-1"></i>Export CSV</a>
+  </div>
+</div>
+
+<!-- Summary Stats -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-success">
+      <div class="stat-icon"><i class="fas fa-coins"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= formatPeso(totalCollected) %></div>
+        <div class="stat-label">Total Collected</div>
+        <div class="stat-sub">All time</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-primary">
+      <div class="stat-icon"><i class="fas fa-receipt"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= summary.txn_count %></div>
+        <div class="stat-label">Transactions</div>
+        <div class="stat-sub">Filtered results</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-info">
+      <div class="stat-icon"><i class="fas fa-check-circle"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= formatPeso(summary.collected) %></div>
+        <div class="stat-label">Collected (filtered)</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-danger">
+      <div class="stat-icon"><i class="fas fa-undo"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= formatPeso(summary.refunded) %></div>
+        <div class="stat-label">Refunded (filtered)</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="GET" action="/payments" class="row g-2 align-items-end">
+      <div class="col-12 col-md-3">
+        <input type="text" name="search" value="<%= filters.search %>" class="form-control form-control-sm" placeholder="Ref #, booking ref, or customer…" />
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="method" class="form-select form-select-sm">
+          <option value="">All Methods</option>
+          <% for (const m of methods) { %><option value="<%= m %>" <%= filters.method === m ? 'selected' : '' %>><%= m.replace(/_/g,' ') %></option><% } %>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="status" class="form-select form-select-sm">
+          <option value="">All Statuses</option>
+          <% for (const s of statuses) { %><option value="<%= s %>" <%= filters.status === s ? 'selected' : '' %>><%= s %></option><% } %>
+        </select>
+      </div>
+      <div class="col-6 col-md-1">
+        <input type="date" name="from" value="<%= filters.from %>" class="form-control form-control-sm" title="From date" />
+      </div>
+      <div class="col-6 col-md-1">
+        <input type="date" name="to" value="<%= filters.to %>" class="form-control form-control-sm" title="To date" />
+      </div>
+      <div class="col-4 col-md-1"><button type="submit" class="btn btn-sm btn-primary w-100"><i class="fas fa-search"></i></button></div>
+      <div class="col-4 col-md-1"><a href="/payments" class="btn btn-sm btn-outline-secondary w-100"><i class="fas fa-times"></i></a></div>
+    </form>
+  </div>
+</div>
+
+<!-- Table -->
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead>
+          <tr>
+            <th>Ref #</th><th>Booking</th><th>Customer</th><th>Amount</th>
+            <th>Method</th><th>Type</th><th>Date</th><th>Received By</th><th>Status</th><th></th>
+          </tr>
+        </thead>
+        <tbody>
+          <% if (!payments || payments.length === 0) { %>
+          <tr><td colspan="10" class="text-center py-4 text-muted">No payments found.</td></tr>
+          <% } else { %>
+            <% for (const p of payments) { %>
+            <tr class="<%= p.status === 'refunded' ? 'table-danger opacity-75' : '' %>">
+              <td><code class="small"><%= p.reference_number %></code></td>
+              <td><a href="/reservations/<%= p.reservation_id %>"><code class="small"><%= p.booking_ref %></code></a></td>
+              <td class="fw-medium small"><%= p.customer_name %></td>
+              <td class="fw-bold <%= p.status === 'refunded' ? 'text-danger' : 'text-success' %>">
+                <%= p.status === 'refunded' ? '-' : '' %><%= formatPeso(p.amount) %>
+              </td>
+              <td><span class="badge bg-light text-dark small"><%= p.payment_method %></span></td>
+              <td><span class="badge bg-light text-dark small"><%= p.payment_type.replace(/_/g,' ') %></span></td>
+              <td class="small text-nowrap"><%= formatDate(p.payment_date) %></td>
+              <td class="small text-muted"><%= p.received_by_name || '—' %></td>
+              <td><%- statusBadge(p.status) %></td>
+              <td><a href="/payments/<%= p.id %>" class="btn btn-xs btn-outline-primary">View</a></td>
+            </tr>
+            <% } %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card-footer"><%include('partials/pagination')%></div>
+</div>

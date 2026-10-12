@@ -1,0 +1,191 @@
+<% layout('layouts/main') %>
+
+<div class="page-header">
+  <div>
+    <h3 class="mb-1">Inventory Dashboard</h3>
+    <p class="text-muted mb-0">Hello, <%= currentUser.firstName %>! Here's your inventory and facilities overview.</p>
+  </div>
+  <div class="page-header-actions">
+    <a href="/inventory/new" class="btn btn-primary btn-sm"><i class="fas fa-plus me-1"></i>Add Item</a>
+    <a href="/inventory" class="btn btn-outline-secondary btn-sm"><i class="fas fa-boxes me-1"></i>Inventory</a>
+  </div>
+</div>
+
+<!-- Stats Row 1: Rooms -->
+<div class="row g-3 mb-3">
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-success">
+      <div class="stat-icon"><i class="fas fa-door-open"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.availableRooms %> / <%= stats.totalRooms %></div>
+        <div class="stat-label">Rooms Available</div>
+        <div class="stat-sub"><%= stats.occupiedRooms %> occupied</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-info">
+      <div class="stat-icon"><i class="fas fa-broom"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.cleaningRooms %></div>
+        <div class="stat-label">Rooms for Cleaning</div>
+        <div class="stat-sub">Needs preparation</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-warning">
+      <div class="stat-icon"><i class="fas fa-tools"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.maintenanceRooms %></div>
+        <div class="stat-label">Under Maintenance</div>
+        <div class="stat-sub"><%= stats.availableVenues %> / <%= stats.totalVenues %> venues available</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card <%= stats.lowStockItems > 0 ? 'stat-danger' : 'stat-success' %>">
+      <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.lowStockItems %></div>
+        <div class="stat-label">Low Stock Alerts</div>
+        <div class="stat-sub"><%= stats.damagedEquipment %> damaged equipment</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <!-- Room Status Chart -->
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-chart-pie me-2 text-primary"></i>Room Status</h6></div>
+      <div class="card-body d-flex align-items-center justify-content-center">
+        <canvas id="roomStatusChart" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Room Status Table -->
+  <div class="col-lg-8">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0"><i class="fas fa-door-open me-2 text-success"></i>Room Status Overview</h6>
+        <a href="/rooms" class="btn btn-sm btn-outline-primary">Manage Rooms</a>
+      </div>
+      <div class="card-body p-0" style="max-height:300px;overflow-y:auto;">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>#</th><th>Room</th><th>Type</th><th>Status</th></tr></thead>
+          <tbody>
+            <% for (const r of roomStatusList) { %>
+            <tr>
+              <td class="text-muted small"><%= r.room_number %></td>
+              <td class="small"><%= r.name %></td>
+              <td class="small text-muted"><%= r.type_name %></td>
+              <td><%- statusBadge(r.status) %></td>
+            </tr>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Low Stock -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0 <%= lowStockList.length > 0 ? 'text-danger' : '' %>"><i class="fas fa-exclamation-triangle me-2"></i>Low Stock Items</h6>
+        <a href="/inventory?alert=low" class="btn btn-sm btn-outline-danger">View All</a>
+      </div>
+      <div class="card-body p-0">
+        <% if (!lowStockList || lowStockList.length === 0) { %>
+        <div class="empty-state py-4"><i class="fas fa-check-circle text-success" style="font-size:2rem;opacity:1"></i><p class="text-success mt-2">All stock levels OK!</p></div>
+        <% } else { %>
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Item</th><th>Category</th><th class="text-center">Available</th><th class="text-center">Reorder</th></tr></thead>
+          <tbody>
+            <% for (const item of lowStockList) { %>
+            <tr>
+              <td class="fw-medium small"><%= item.name %></td>
+              <td class="small text-muted"><%= item.category_name %></td>
+              <td class="text-center"><span class="badge bg-danger"><%= item.available_qty %></span></td>
+              <td class="text-center text-muted small"><%= item.reorder_level %></td>
+            </tr>
+            <% } %>
+          </tbody>
+        </table>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Equipment Alerts -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0"><i class="fas fa-tools me-2 text-warning"></i>Equipment Alerts</h6>
+        <a href="/inventory" class="btn btn-sm btn-outline-warning">Equipment</a>
+      </div>
+      <div class="card-body p-0">
+        <% if (!equipmentAlerts || equipmentAlerts.length === 0) { %>
+        <div class="empty-state py-4"><i class="fas fa-check-circle text-success" style="font-size:2rem;opacity:1"></i><p class="text-success mt-2">All equipment in good condition!</p></div>
+        <% } else { %>
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Equipment</th><th>Category</th><th>Condition</th></tr></thead>
+          <tbody>
+            <% for (const eq of equipmentAlerts) { %>
+            <tr>
+              <td class="fw-medium small"><%= eq.name %></td>
+              <td class="small text-muted"><%= eq.category_name || '—' %></td>
+              <td><%- statusBadge(eq.condition) %></td>
+            </tr>
+            <% } %>
+          </tbody>
+        </table>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent Transactions -->
+  <div class="col-12 mt-2">
+    <div class="card">
+      <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-history me-2"></i>Recent Inventory Transactions</h6></div>
+      <div class="card-body p-0">
+        <% if (!recentTransactions || recentTransactions.length === 0) { %>
+        <div class="empty-state py-4"><i class="fas fa-inbox"></i><p>No transactions yet</p></div>
+        <% } else { %>
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead><tr><th>Item</th><th>Type</th><th class="text-center">Qty</th><th>By</th><th>Notes</th><th>Date</th></tr></thead>
+            <tbody>
+              <% for (const t of recentTransactions) { %>
+              <tr>
+                <td class="fw-medium small"><%= t.item_name %></td>
+                <td><span class="badge bg-light text-dark small"><%= t.transaction_type %></span></td>
+                <td class="text-center"><%= t.quantity %></td>
+                <td class="small text-muted"><%= t.performed_by_name || 'System' %></td>
+                <td class="small text-muted"><%= t.notes || '—' %></td>
+                <td class="small text-muted text-nowrap"><%= formatDate(t.created_at) %></td>
+              </tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const rs = <%- roomStatusChartJson || '[]' %>;
+  const rsc = document.getElementById('roomStatusChart');
+  const statusColors = { available:'#10b981', reserved:'#f59e0b', occupied:'#6366f1', cleaning:'#3b82f6', maintenance:'#f97316', unavailable:'#ef4444' };
+  if (rsc && rs.length) new Chart(rsc,{type:'doughnut',data:{labels:rs.map(d=>d.status),datasets:[{data:rs.map(d=>d.cnt),backgroundColor:rs.map(d=>statusColors[d.status]||'#9ca3af'),borderWidth:2}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{boxWidth:12,font:{size:11}}}},cutout:'60%'}});
+})();
+</script>

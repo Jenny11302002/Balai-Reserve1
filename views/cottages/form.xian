@@ -1,0 +1,261 @@
+<% layout('layouts/main') %>
+
+<div class="page-header">
+  <div>
+    <nav aria-label="breadcrumb"><ol class="breadcrumb mb-1">
+      <li class="breadcrumb-item"><a href="/cottages">Cottages</a></li>
+      <li class="breadcrumb-item active"><%= cottage ? 'Edit' : 'Add Cottage' %></li>
+    </ol></nav>
+    <h3 class="mb-0"><%= cottage ? 'Edit ' + cottage.name : 'Add New Cottage' %></h3>
+  </div>
+</div>
+
+<% if (errors && errors.length > 0) { %>
+<div class="alert alert-danger">
+  <% for (const e of errors) { %><div><i class="fas fa-exclamation-circle me-1"></i><%= e.msg %></div><% } %>
+</div>
+<% } %>
+
+<div class="row g-4">
+
+  <!-- Left: Main Form -->
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-home me-2"></i>Cottage Details</h6></div>
+      <div class="card-body">
+        <!-- IMPORTANT: enctype multipart for file uploads -->
+        <form action="<%= cottage ? '/cottages/' + cottage.id + '/edit' : '/cottages' %>"
+              method="POST" enctype="multipart/form-data" id="cottageForm">
+
+          <div class="row g-3">
+            <div class="col-12">
+              <label class="form-label required">Cottage Name</label>
+              <input type="text" name="name" class="form-control"
+                value="<%= old.name || '' %>" placeholder="e.g. Cottage A – Nipa Hut" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label required">Capacity (guests)</label>
+              <input type="number" name="capacity" class="form-control"
+                value="<%= old.capacity || 8 %>" min="1" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label required">Price (₱)</label>
+              <div class="input-group">
+                <span class="input-group-text">₱</span>
+                <input type="number" name="price" class="form-control"
+                  value="<%= old.price || '' %>" min="0" step="0.01" placeholder="0.00" required />
+              </div>
+            </div>
+            <div class="col-12">
+              <label class="form-label">Amenities <small class="text-muted">(comma-separated)</small></label>
+              <input type="text" name="amenities" class="form-control"
+                value="<%= old.amenitiesStr || '' %>"
+                placeholder="Fan, Table, Chairs, Life Vests…" />
+            </div>
+            <div class="col-12">
+              <label class="form-label">Description</label>
+              <textarea name="description" class="form-control" rows="3"
+                placeholder="Brief description of the cottage…"><%= old.description || '' %></textarea>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Status</label>
+              <select name="status" class="form-select">
+                <% for (const s of ['available','reserved','occupied','maintenance','unavailable']) { %>
+                <option value="<%= s %>" <%= (old.status || 'available') === s ? 'selected' : '' %>><%= s.charAt(0).toUpperCase() + s.slice(1) %></option>
+                <% } %>
+              </select>
+            </div>
+          </div>
+
+          <div class="d-flex gap-2 mt-4">
+            <button type="submit" class="btn btn-primary">
+              <i class="fas fa-save me-1"></i><%= cottage ? 'Update Cottage' : 'Create Cottage' %>
+            </button>
+            <a href="/cottages<%= cottage ? '/' + cottage.id : '' %>" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+
+  <!-- Right: Image Upload -->
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-images me-2"></i>Cottage Photos</h6></div>
+      <div class="card-body">
+
+        <!-- Existing images (edit mode) -->
+        <% if (cottage && cottage.imagesList && cottage.imagesList.length > 0) { %>
+        <div class="mb-3">
+          <label class="form-label small fw-bold">Current Photos — uncheck to remove</label>
+          <div class="row g-2" id="existingImagesGrid">
+            <% for (const img of cottage.imagesList) { %>
+            <div class="col-6 existing-img-item" data-img="<%= img %>">
+              <div class="position-relative">
+                <img src="<%= img %>" alt="Cottage photo"
+                  class="img-fluid rounded border"
+                  style="height:110px;width:100%;object-fit:cover;" />
+                <!-- Hidden input preserves this image path on submit -->
+                <input type="hidden" name="keep_images" value="<%= img %>" class="keep-img-input" form="cottageForm" />
+                <!-- Remove button -->
+                <button type="button"
+                  class="btn btn-danger btn-xs position-absolute top-0 end-0 m-1 remove-img-btn"
+                  style="padding:2px 6px;font-size:.7rem;border-radius:50%;"
+                  title="Remove this photo">
+                  <i class="fas fa-times"></i>
+                </button>
+              </div>
+            </div>
+            <% } %>
+          </div>
+        </div>
+        <% } %>
+
+        <!-- Upload new images -->
+        <div class="mb-3">
+          <label class="form-label small fw-bold">
+            <%= cottage && cottage.imagesList && cottage.imagesList.length > 0 ? 'Add More Photos' : 'Upload Photos' %>
+            <span class="text-muted fw-normal">(up to 5, max 5MB each — jpg, png, webp)</span>
+          </label>
+
+          <!-- Drop zone -->
+          <div class="upload-dropzone" id="dropZone">
+            <i class="fas fa-cloud-upload-alt fa-2x mb-2 text-muted"></i>
+            <div class="small text-muted">Drag &amp; drop photos here or</div>
+            <label for="imageInput" class="btn btn-sm btn-outline-primary mt-2" style="cursor:pointer;">
+              <i class="fas fa-folder-open me-1"></i>Browse Files
+            </label>
+            <input type="file" id="imageInput" name="images" form="cottageForm"
+              multiple accept="image/*" class="d-none" />
+          </div>
+
+          <!-- New image previews -->
+          <div class="row g-2 mt-2" id="newImagesPreview"></div>
+        </div>
+
+        <div class="alert alert-light py-2 small mb-0">
+          <i class="fas fa-info-circle me-1 text-info"></i>
+          First photo will be used as the main cover image.
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+.upload-dropzone {
+  border: 2px dashed #d1d5db;
+  border-radius: .75rem;
+  padding: 1.5rem;
+  text-align: center;
+  background: #f9fafb;
+  transition: border-color .2s, background .2s;
+  cursor: pointer;
+}
+.upload-dropzone.dragover {
+  border-color: #4f46e5;
+  background: #ede9fe;
+}
+.preview-thumb {
+  position: relative;
+  height: 100px;
+  border-radius: .5rem;
+  overflow: hidden;
+  border: 2px solid #e5e7eb;
+}
+.preview-thumb img { width:100%; height:100%; object-fit:cover; }
+.preview-thumb .remove-preview {
+  position: absolute; top: 3px; right: 3px;
+  background: rgba(239,68,68,.85); color: #fff;
+  border: none; border-radius: 50%;
+  width: 20px; height: 20px; font-size: .65rem;
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; line-height: 1;
+}
+</style>
+
+<script>
+(function () {
+  // ── Remove existing image ─────────────────────────────────────────────────
+  document.querySelectorAll('.remove-img-btn').forEach(btn => {
+    btn.addEventListener('click', function () {
+      const wrapper = this.closest('.existing-img-item');
+      // Disable the hidden keep_images input so it won't be submitted
+      const inp = wrapper.querySelector('.keep-img-input');
+      if (inp) inp.disabled = true;
+      wrapper.style.opacity = '0.35';
+      wrapper.style.pointerEvents = 'none';
+      this.innerHTML = '<i class="fas fa-undo"></i>';
+      this.classList.replace('btn-danger', 'btn-success');
+      this.title = 'Undo remove';
+      // Undo
+      this.addEventListener('click', function () {
+        if (inp) inp.disabled = false;
+        wrapper.style.opacity = '';
+        wrapper.style.pointerEvents = '';
+        this.innerHTML = '<i class="fas fa-times"></i>';
+        this.classList.replace('btn-success', 'btn-danger');
+        this.title = 'Remove this photo';
+      }, { once: true });
+    });
+  });
+
+  // ── New image previews ────────────────────────────────────────────────────
+  const input   = document.getElementById('imageInput');
+  const preview = document.getElementById('newImagesPreview');
+  const dropZone= document.getElementById('dropZone');
+  let   dtFiles = new DataTransfer(); // keeps the live FileList
+
+  function addFiles(files) {
+    for (const file of files) {
+      if (!file.type.startsWith('image/')) continue;
+      if (dtFiles.items.length >= 5) break;
+      dtFiles.items.add(file);
+    }
+    input.files = dtFiles.files;
+    renderPreviews();
+  }
+
+  function renderPreviews() {
+    preview.innerHTML = '';
+    Array.from(dtFiles.files).forEach((file, idx) => {
+      const reader = new FileReader();
+      reader.onload = e => {
+        const col = document.createElement('div');
+        col.className = 'col-6 col-md-4';
+        col.innerHTML = `
+          <div class="preview-thumb">
+            <img src="${e.target.result}" alt="${file.name}" />
+            <button type="button" class="remove-preview" data-idx="${idx}" title="Remove">✕</button>
+            ${idx === 0 ? '<span class="badge bg-primary position-absolute bottom-0 start-0 m-1" style="font-size:.65rem;">Cover</span>' : ''}
+          </div>
+        `;
+        col.querySelector('.remove-preview').addEventListener('click', function () {
+          const i = parseInt(this.dataset.idx);
+          const newDt = new DataTransfer();
+          Array.from(dtFiles.files).forEach((f, fi) => { if (fi !== i) newDt.items.add(f); });
+          dtFiles = newDt;
+          input.files = dtFiles.files;
+          renderPreviews();
+        });
+        preview.appendChild(col);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  input.addEventListener('change', () => { addFiles(input.files); });
+
+  // Drag and drop
+  dropZone.addEventListener('dragover',  e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+  dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+  dropZone.addEventListener('drop', e => {
+    e.preventDefault();
+    dropZone.classList.remove('dragover');
+    addFiles(e.dataTransfer.files);
+  });
+  dropZone.addEventListener('click', e => {
+    if (e.target.tagName !== 'LABEL' && e.target.tagName !== 'INPUT') input.click();
+  });
+})();
+</script>

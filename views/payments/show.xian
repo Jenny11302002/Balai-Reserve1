@@ -1,0 +1,166 @@
+<% layout('layouts/main') %>
+
+<div class="page-header">
+  <div>
+    <nav aria-label="breadcrumb"><ol class="breadcrumb mb-1">
+      <li class="breadcrumb-item"><a href="/payments">Payments</a></li>
+      <li class="breadcrumb-item active"><%= payment.reference_number %></li>
+    </ol></nav>
+    <h3 class="mb-0">Payment <code style="font-size:1rem;"><%= payment.reference_number %></code></h3>
+  </div>
+  <div class="page-header-actions">
+    <%- statusBadge(payment.status) %>
+    <% if (currentUser && currentUser.role === 'admin' && payment.status === 'received') { %>
+    <form action="/payments/<%= payment.id %>/verify" method="POST" class="d-inline">
+      <button type="submit" class="btn btn-sm btn-success"
+        data-confirm="Mark this payment as verified?"
+        data-confirm-title="Verify Payment"
+        data-confirm-ok="Verify Payment">
+        <i class="fas fa-check me-1"></i>Verify Payment
+      </button>
+    </form>
+    <% } %>
+  </div>
+</div>
+
+<div class="row g-3">
+
+  <!-- Left: Payment Details -->
+  <div class="col-lg-7">
+
+    <!-- Payment Info Card -->
+    <div class="card mb-3">
+      <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-receipt me-2"></i>Payment Details</h6></div>
+      <div class="card-body">
+        <div class="row g-3">
+          <div class="col-md-6">
+            <table class="table table-sm table-borderless mb-0">
+              <tr><th>Reference #</th><td><code><%= payment.reference_number %></code></td></tr>
+              <tr><th>Booking Ref</th><td><a href="/reservations/<%= payment.reservation_id %>"><code><%= payment.booking_ref %></code></a></td></tr>
+              <tr><th>Customer</th><td><a href="/crm/customers/<%= payment.customer_id %>"><%= payment.customer_name %></a></td></tr>
+              <tr><th>Email</th><td class="small text-muted"><%= payment.customer_email || '—' %></td></tr>
+            </table>
+          </div>
+          <div class="col-md-6">
+            <table class="table table-sm table-borderless mb-0">
+              <tr><th>Amount</th><td class="fw-bold fs-5 <%= payment.status === 'refunded' ? 'text-danger' : 'text-success' %>"><%= formatPeso(payment.amount) %></td></tr>
+              <tr><th>Method</th><td><span class="badge bg-light text-dark"><%= payment.payment_method.replace(/_/g,' ') %></span></td></tr>
+              <tr><th>Type</th><td><span class="badge bg-light text-dark"><%= payment.payment_type.replace(/_/g,' ') %></span></td></tr>
+              <tr><th>Date</th><td><%= formatDate(payment.payment_date) %></td></tr>
+              <tr><th>Received By</th><td class="small"><%= payment.received_by_name || '—' %></td></tr>
+              <tr><th>Status</th><td><%- statusBadge(payment.status) %></td></tr>
+            </table>
+          </div>
+          <% if (payment.notes) { %>
+          <div class="col-12">
+            <div class="alert alert-light py-2 mb-0 small"><i class="fas fa-sticky-note me-1"></i><%= payment.notes %></div>
+          </div>
+          <% } %>
+        </div>
+      </div>
+    </div>
+
+    <!-- All Payments for This Reservation -->
+    <div class="card mb-3">
+      <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-history me-2"></i>All Payments for <a href="/reservations/<%= payment.reservation_id %>"><code><%= payment.booking_ref %></code></a></h6></div>
+      <div class="card-body p-0">
+        <table class="table table-sm mb-0">
+          <thead><tr><th>Ref #</th><th>Type</th><th>Amount</th><th>Method</th><th>Date</th><th>Status</th></tr></thead>
+          <tbody>
+            <% for (const p of siblingPayments) { %>
+            <tr class="<%= p.id === payment.id ? 'table-active' : '' %> <%= p.status === 'refunded' ? 'text-danger' : '' %>">
+              <td><a href="/payments/<%= p.id %>"><code class="small"><%= p.reference_number %></code></a></td>
+              <td><span class="badge bg-light text-dark small"><%= p.payment_type.replace(/_/g,' ') %></span></td>
+              <td class="fw-medium"><%= p.status === 'refunded' ? '-' : '' %><%= formatPeso(p.amount) %></td>
+              <td class="small text-muted"><%= p.payment_method %></td>
+              <td class="small text-nowrap"><%= formatDate(p.payment_date) %></td>
+              <td><%- statusBadge(p.status) %></td>
+            </tr>
+            <% } %>
+          </tbody>
+          <tfoot class="table-light fw-bold">
+            <tr>
+              <td colspan="2">Net Paid</td>
+              <td class="text-success"><%= formatPeso(netPaid) %></td>
+              <td colspan="2" class="text-muted small">Balance: <span class="<%= balance > 0 ? 'text-danger' : 'text-success' %>"><%= formatPeso(balance) %></span></td>
+              <td></td>
+            </tr>
+          </tfoot>
+        </table>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- Right: Actions -->
+  <div class="col-lg-5">
+
+    <!-- Reservation Summary -->
+    <div class="card mb-3">
+      <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-calendar-check me-2"></i>Reservation Summary</h6></div>
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tr><th>Total Amount</th><td class="fw-bold text-primary"><%= formatPeso(payment.res_total) %></td></tr>
+          <tr><th>Total Paid</th><td class="fw-bold text-success"><%= formatPeso(netPaid) %></td></tr>
+          <tr><th>Balance Due</th><td class="fw-bold <%= balance > 0 ? 'text-danger' : 'text-success' %>"><%= formatPeso(balance) %></td></tr>
+          <tr><th>Res. Status</th><td><%- statusBadge(payment.res_status) %></td></tr>
+          <tr><th>Pay. Status</th><td><%- statusBadge(payment.res_payment_status) %></td></tr>
+        </table>
+        <a href="/reservations/<%= payment.reservation_id %>" class="btn btn-sm btn-outline-primary w-100 mt-3">
+          <i class="fas fa-external-link-alt me-1"></i>View Full Reservation
+        </a>
+      </div>
+    </div>
+
+    <!-- Refund Form (admin only, not already refunded) -->
+    <% if (currentUser && currentUser.role === 'admin' && payment.status !== 'refunded') { %>
+    <div class="card">
+      <div class="card-header">
+        <h6 class="card-title mb-0 text-danger"><i class="fas fa-undo me-2"></i>Process Refund</h6>
+      </div>
+      <div class="card-body">
+        <div class="alert alert-warning py-2 small mb-3">
+          <i class="fas fa-exclamation-triangle me-1"></i>
+          Refunds cannot be undone. Ensure this has been approved before proceeding.
+        </div>
+        <form action="/payments/<%= payment.id %>/refund" method="POST">
+          <div class="mb-3">
+            <label class="form-label required">Refund Amount (₱)</label>
+            <div class="input-group">
+              <span class="input-group-text">₱</span>
+              <input type="number" name="refund_amount" class="form-control"
+                value="<%= payment.amount.toFixed(2) %>"
+                min="0.01" max="<%= payment.amount %>" step="0.01" required />
+            </div>
+            <div class="form-text">Maximum refundable: <%= formatPeso(payment.amount) %></div>
+          </div>
+          <div class="mb-3">
+            <label class="form-label required">Reason for Refund</label>
+            <textarea name="refund_reason" class="form-control" rows="3"
+              placeholder="State the reason for this refund…" required></textarea>
+          </div>
+          <button type="submit" class="btn btn-danger w-100"
+            data-confirm="Process a refund of ₱<%= payment.amount.toFixed(2) %>? This action cannot be undone."
+            data-confirm-title="Process Refund"
+            data-confirm-type="danger"
+            data-confirm-ok="Process Refund">
+            <i class="fas fa-undo me-1"></i>Confirm Refund
+          </button>
+        </form>
+      </div>
+    </div>
+    <% } %>
+
+    <!-- Already refunded notice -->
+    <% if (payment.status === 'refunded') { %>
+    <div class="card border-danger">
+      <div class="card-body text-center py-4">
+        <i class="fas fa-undo fa-2x text-danger mb-2 d-block"></i>
+        <h6 class="text-danger">This Payment Has Been Refunded</h6>
+        <p class="text-muted small mb-0">A refund was processed for this transaction.</p>
+      </div>
+    </div>
+    <% } %>
+
+  </div>
+</div>

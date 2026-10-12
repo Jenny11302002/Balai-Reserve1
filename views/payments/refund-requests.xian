@@ -1,0 +1,135 @@
+<% layout('layouts/main') %>
+
+<div class="page-header">
+  <div>
+    <nav aria-label="breadcrumb"><ol class="breadcrumb mb-1">
+      <li class="breadcrumb-item"><a href="/payments">Payments</a></li>
+      <li class="breadcrumb-item active">Refund Requests</li>
+    </ol></nav>
+    <h3 class="mb-0"><i class="fas fa-hand-holding-usd me-2 text-warning"></i>Refund Requests</h3>
+  </div>
+</div>
+
+<%# Status filter tabs %>
+<ul class="nav nav-pills mb-3 gap-2 refund-tabs">
+  <% for (const [key, label] of [['pending','Pending'],['approved','Approved'],['rejected','Rejected']]) { %>
+  <li class="nav-item">
+    <a class="nav-link <%= filter === key ? 'active' : '' %>" href="/payments/refunds/requests?status=<%= key %>">
+      <span class="refund-tab-label"><%= label %></span>
+      <span class="badge <%= filter === key ? 'bg-light text-dark' : 'bg-secondary' %> ms-1"><%= counts[key] || 0 %></span>
+    </a>
+  </li>
+  <% } %>
+</ul>
+
+<style>
+  /* Inactive pill tabs: dark, readable text on the light page background.
+     Use !important + explicit label colour to beat Bootstrap/theme overrides. */
+  .refund-tabs .nav-link {
+    color: #334155 !important;
+    border: 1px solid #e2e8f0;
+    background: #fff;
+  }
+  .refund-tabs .nav-link .refund-tab-label { color: #334155; font-weight: 600; }
+  .refund-tabs .nav-link:hover { color: #0f172a !important; background: #f1f5f9; }
+  .refund-tabs .nav-link:hover .refund-tab-label { color: #0f172a; }
+  .refund-tabs .nav-link.active,
+  .refund-tabs .nav-link.active .refund-tab-label { color: #fff !important; }
+  .refund-tabs .nav-link.active { background: #4f46e5; border-color: #4f46e5; }
+</style>
+
+<div class="card">
+  <div class="card-body p-0">
+    <% if (!requests || requests.length === 0) { %>
+    <div class="empty-state py-5 text-center">
+      <i class="fas fa-inbox text-muted" style="font-size:2.5rem;"></i>
+      <p class="text-muted mt-2 mb-0">No <%= filter %> refund requests.</p>
+    </div>
+    <% } else { %>
+    <div class="table-responsive">
+      <table class="table table-hover mb-0 align-middle">
+        <thead>
+          <tr>
+            <th>Booking</th><th>Customer</th><th>Amount</th><th>Reason</th><th>Requested</th><th>Status</th><th class="text-end">Action</th>
+          </tr>
+        </thead>
+        <tbody>
+          <% for (const rr of requests) { %>
+          <tr>
+            <td>
+              <a href="/reservations/<%= rr.reservation_id %>"><code class="small"><%= rr.booking_ref %></code></a>
+              <div class="small text-muted text-capitalize"><%= rr.reservation_type %></div>
+            </td>
+            <td>
+              <div class="fw-medium small"><%= rr.customer_name || '—' %></div>
+              <div class="small text-muted"><%= rr.customer_email || '' %></div>
+            </td>
+            <td class="fw-bold text-danger"><%= formatPeso(rr.amount) %></td>
+            <td class="small" style="max-width:260px;white-space:pre-wrap;">
+              <%= rr.reason || '—' %>
+              <% if (rr.gcash_number) { %><div class="text-muted mt-1"><i class="fas fa-mobile-alt me-1"></i>Refund to GCash: <code><%= rr.gcash_number %></code></div><% } %>
+            </td>
+            <td class="small text-nowrap"><%= formatDate(rr.created_at) %></td>
+            <td>
+              <% if (rr.status === 'pending') { %>
+                <span class="badge bg-warning text-dark"><i class="fas fa-clock me-1"></i>Pending</span>
+              <% } else if (rr.status === 'approved') { %>
+                <span class="badge bg-success"><i class="fas fa-check me-1"></i>Approved</span>
+              <% } else { %>
+                <span class="badge bg-danger"><i class="fas fa-times me-1"></i>Rejected</span>
+              <% } %>
+              <% if (rr.reviewed_by_name) { %><div class="small text-muted mt-1">by <%= rr.reviewed_by_name %></div><% } %>
+              <% if (rr.payout_method) { %><div class="small text-muted">Payout: <strong><%= rr.payout_method.toUpperCase() %></strong><% if (rr.payout_ref) { %> &middot; <code><%= rr.payout_ref %></code><% } %></div><% } %>
+              <% if (rr.payout_proof) { %>
+              <div class="mt-1">
+                <a href="/payments/refunds/requests/<%= rr.id %>/proof"
+                   data-lightbox="/payments/refunds/requests/<%= rr.id %>/proof"
+                   data-lightbox-title="Refund Proof — <%= rr.booking_ref %>"
+                   class="small text-primary" style="cursor:zoom-in;">
+                  <i class="fas fa-receipt me-1"></i>View Refund Proof
+                </a>
+              </div>
+              <% } %>
+              <% if (rr.admin_note) { %><div class="small text-muted fst-italic">"<%= rr.admin_note %>"</div><% } %>
+            </td>
+            <td class="text-end">
+              <% if (rr.status === 'pending') { %>
+              <div class="d-flex flex-column gap-1" style="min-width:210px;">
+                <form action="/payments/refunds/requests/<%= rr.id %>/review" method="POST" enctype="multipart/form-data" class="d-flex flex-column gap-1">
+                  <input type="hidden" name="action" value="approve" />
+                  <select name="payout_method" class="form-select form-select-sm">
+                    <option value="gcash">GCash</option>
+                    <option value="cash">Cash</option>
+                    <option value="bank">Bank Transfer</option>
+                  </select>
+                  <input type="text" name="payout_ref" class="form-control form-control-sm" placeholder="Payout ref (req. for GCash/bank)" />
+                  <input type="text" name="admin_note" class="form-control form-control-sm" placeholder="Note (optional)" />
+                  <label class="form-label small mb-0 mt-1">Refund proof screenshot</label>
+                  <input type="file" name="payout_proof" class="form-control form-control-sm" accept="image/*,.pdf" />
+                  <button type="submit" class="btn btn-sm btn-success"
+                    data-confirm="Approve this refund of <%= formatPeso(rr.amount) %> for <%= rr.booking_ref %>? Make sure you have sent the payout and attached the receipt screenshot. This marks the booking refunded."
+                    data-confirm-title="Approve Refund"
+                    data-confirm-ok="Approve &amp; Refund">
+                    <i class="fas fa-check me-1"></i>Approve
+                  </button>
+                </form>
+                <form action="/payments/refunds/requests/<%= rr.id %>/review" method="POST" class="d-flex flex-column gap-1">
+                  <input type="hidden" name="action" value="reject" />
+                  <input type="text" name="admin_note" class="form-control form-control-sm" placeholder="Reason (required)" required />
+                  <button type="submit" class="btn btn-sm btn-outline-danger">
+                    <i class="fas fa-times me-1"></i>Reject
+                  </button>
+                </form>
+              </div>
+              <% } else { %>
+                <span class="text-muted small"><%= rr.reviewed_at ? formatDate(rr.reviewed_at) : '' %></span>
+              <% } %>
+            </td>
+          </tr>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+    <% } %>
+  </div>
+</div>

@@ -1,0 +1,44 @@
+{
+  "name": "balai-reserve",
+  "version": "1.0.0",
+  "description": "Balai-Reserve: Online Booking and Event Management System with CRM, Inventory, Analytics, and AI Decision Support",
+  "main": "app.js",
+  "scripts": {
+    "start": "node app.js",
+    "dev": "nodemon app.js",
+    "migrate": "node src/database/migrate.js",
+    "seed": "node src/database/seed.js",
+    "setup": "node src/database/migrate.js && node src/database/seed.js",
+    "fresh-start": "node src/database/fresh-start.js"
+  },
+  "dependencies": {
+    "bcryptjs": "^2.4.3",
+    "better-sqlite3": "^11.6.0",
+    "better-sqlite3-session-store": "^0.1.0",
+    "connect-sqlite3": "^0.9.13",
+    "cookie-parser": "^1.4.6",
+    "csurf": "^1.11.0",
+    "dayjs": "^1.11.10",
+    "dotenv": "^16.3.1",
+    "exceljs": "^4.4.0",
+    "express": "^4.18.2",
+    "express-rate-limit": "^7.1.5",
+    "express-session": "^1.17.3",
+    "express-validator": "^7.0.1",
+    "firebase-admin": "^12.3.1",
+    "helmet": "^7.1.0",
+    "morgan": "^1.10.0",
+    "multer": "^1.4.5-lts.1",
+    "node-cron": "^3.0.3",
+    "pdfkit": "^0.14.0",
+    "qrcode": "^1.5.3",
+    "tesseract.js": "^5.1.1",
+    "uuid": "^9.0.0"
+  },
+  "devDependencies": {
+    "nodemon": "^3.0.2"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

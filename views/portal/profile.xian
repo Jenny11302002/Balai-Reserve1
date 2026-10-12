@@ -1,0 +1,170 @@
+<% layout('layouts/portal') %>
+
+<div class="container-lg px-4 py-4">
+  <div class="mb-4">
+    <h4 class="fw-bold mb-1"><i class="fas fa-user-cog me-2 text-primary"></i>Profile Settings</h4>
+    <p class="text-muted mb-0" style="font-size:.85rem;">Manage your account details and password</p>
+  </div>
+
+  <div class="row g-4">
+
+    <!-- Left: summary card -->
+    <div class="col-lg-4">
+      <div class="bg-white rounded-3 border p-4 text-center">
+        <div class="mx-auto mb-3 d-flex align-items-center justify-content-center"
+          style="width:80px;height:80px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#7c3aed);color:#fff;font-size:1.8rem;font-weight:700;">
+          <%= (account.first_name||'?').charAt(0) %><%= (account.last_name||'').charAt(0) %>
+        </div>
+        <h5 class="fw-bold mb-0"><%= account.first_name %> <%= account.last_name %></h5>
+        <div class="text-muted small mb-2"><%= account.email %></div>
+        <span class="badge bg-primary-subtle text-primary" style="background:#eef2ff;color:#4f46e5;">
+          <i class="fas fa-user me-1"></i>Customer
+        </span>
+        <hr />
+        <div class="text-start small">
+          <div class="d-flex justify-content-between py-1">
+            <span class="text-muted">Phone</span>
+            <span class="fw-medium"><%= account.phone || '—' %></span>
+          </div>
+          <div class="d-flex justify-content-between py-1">
+            <span class="text-muted">Sign-in</span>
+            <span class="fw-medium text-capitalize"><%= account.auth_provider === 'google' ? 'Google' : 'Email' %></span>
+          </div>
+          <div class="d-flex justify-content-between py-1">
+            <span class="text-muted">Member since</span>
+            <span class="fw-medium"><%= formatDate(account.created_at) %></span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Right: tabbed forms -->
+    <div class="col-lg-8">
+      <div class="bg-white rounded-3 border overflow-hidden">
+
+        <!-- Tabs -->
+        <ul class="nav nav-tabs px-3 pt-2" id="profileTabs" role="tablist" style="border-bottom:1px solid #e2e8f0;">
+          <li class="nav-item" role="presentation">
+            <button class="nav-link <%= activeTab !== 'password' ? 'active' : '' %>" id="tab-profile"
+              data-bs-toggle="tab" data-bs-target="#pane-profile" type="button" role="tab">
+              <i class="fas fa-user me-1"></i>Edit Profile
+            </button>
+          </li>
+          <li class="nav-item" role="presentation">
+            <button class="nav-link <%= activeTab === 'password' ? 'active' : '' %>" id="tab-password"
+              data-bs-toggle="tab" data-bs-target="#pane-password" type="button" role="tab">
+              <i class="fas fa-lock me-1"></i>Change Password
+            </button>
+          </li>
+        </ul>
+
+        <div class="tab-content p-4">
+
+          <!-- Edit Profile -->
+          <div class="tab-pane fade <%= activeTab !== 'password' ? 'show active' : '' %>" id="pane-profile" role="tabpanel">
+            <% if (errors && errors.length > 0) { %>
+            <div class="alert alert-danger py-2 small">
+              <% for (const e of errors) { %><div><i class="fas fa-exclamation-circle me-1"></i><%= e.msg %></div><% } %>
+            </div>
+            <% } %>
+            <form action="/portal/profile" method="POST">
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">First Name <span class="text-danger">*</span></label>
+                  <input type="text" name="first_name" class="form-control"
+                    value="<%= (old && old.first_name) || account.first_name || '' %>" required />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Last Name <span class="text-danger">*</span></label>
+                  <input type="text" name="last_name" class="form-control"
+                    value="<%= (old && old.last_name) || account.last_name || '' %>" required />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Email <span class="text-muted">(cannot be changed)</span></label>
+                  <input type="email" class="form-control" value="<%= account.email || '' %>" disabled />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Phone Number</label>
+                  <input type="text" name="phone" class="form-control"
+                    value="<%= (old && old.phone) || account.phone || '' %>" placeholder="09XX-XXX-XXXX" />
+                </div>
+                <div class="col-12">
+                  <label class="form-label small fw-semibold">Address</label>
+                  <input type="text" name="address" class="form-control"
+                    value="<%= (old && old.address) || (customer && customer.address) || '' %>"
+                    placeholder="City, Province" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Preferred Contact Method</label>
+                  <% const pc = (old && old.preferred_contact) || (customer && customer.preferred_contact) || 'email'; %>
+                  <select name="preferred_contact" class="form-select">
+                    <option value="email" <%= pc === 'email' ? 'selected' : '' %>>Email</option>
+                    <option value="phone" <%= pc === 'phone' ? 'selected' : '' %>>Phone Call</option>
+                    <option value="sms"   <%= pc === 'sms'   ? 'selected' : '' %>>SMS / Text</option>
+                  </select>
+                </div>
+              </div>
+              <div class="mt-4">
+                <button type="submit" class="btn btn-primary px-4"><i class="fas fa-save me-1"></i>Save Changes</button>
+              </div>
+            </form>
+          </div>
+
+          <!-- Change Password -->
+          <div class="tab-pane fade <%= activeTab === 'password' ? 'show active' : '' %>" id="pane-password" role="tabpanel">
+            <% if (pwErrors && pwErrors.length > 0) { %>
+            <div class="alert alert-danger py-2 small">
+              <% for (const e of pwErrors) { %><div><i class="fas fa-exclamation-circle me-1"></i><%= e.msg %></div><% } %>
+            </div>
+            <% } %>
+            <% if (account.auth_provider === 'google' && !account.password_hash) { %>
+              <div class="alert alert-info py-2 small mb-0">
+                <i class="fas fa-info-circle me-1"></i>
+                Your account uses <strong>Google Sign-In</strong>. There is no password to manage here.
+              </div>
+            <% } else { %>
+            <form action="/portal/profile/password" method="POST">
+              <div class="row g-3">
+                <div class="col-12">
+                  <label class="form-label small fw-semibold">Current Password <span class="text-danger">*</span></label>
+                  <input type="password" name="current_password" class="form-control" required autocomplete="current-password" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">New Password <span class="text-danger">*</span></label>
+                  <input type="password" name="new_password" id="newPass" class="form-control" required minlength="8" autocomplete="new-password" />
+                </div>
+                <div class="col-md-6">
+                  <label class="form-label small fw-semibold">Confirm New Password <span class="text-danger">*</span></label>
+                  <input type="password" name="confirm_password" id="confirmPass" class="form-control" required autocomplete="new-password" />
+                  <div id="pwMatch" class="form-text" style="font-size:.72rem;"></div>
+                </div>
+              </div>
+              <div class="mt-4">
+                <button type="submit" class="btn btn-primary px-4"><i class="fas fa-key me-1"></i>Update Password</button>
+              </div>
+            </form>
+            <% } %>
+          </div>
+
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  var np = document.getElementById('newPass');
+  var cp = document.getElementById('confirmPass');
+  var msg = document.getElementById('pwMatch');
+  if (np && cp && msg) {
+    function check() {
+      if (!cp.value) { msg.textContent = ''; return; }
+      if (cp.value === np.value) { msg.style.color = '#16a34a'; msg.textContent = 'Passwords match'; }
+      else { msg.style.color = '#dc2626'; msg.textContent = 'Passwords do not match'; }
+    }
+    np.addEventListener('input', check);
+    cp.addEventListener('input', check);
+  }
+})();
+</script>

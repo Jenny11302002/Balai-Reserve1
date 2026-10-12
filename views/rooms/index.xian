@@ -1,0 +1,105 @@
+<% layout('layouts/main') %>
+
+<div class="page-header">
+  <div>
+    <h3 class="mb-1">Rooms</h3>
+    <p class="text-muted mb-0">Manage accommodation rooms and availability</p>
+  </div>
+  <div class="page-header-actions">
+    <% if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'staff')) { %>
+    <a href="/rooms/new" class="btn btn-primary btn-sm">
+      <i class="fas fa-plus me-1"></i> Add Room
+    </a>
+    <% } %>
+  </div>
+</div>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="GET" action="/rooms" class="row g-2 align-items-end">
+      <div class="col-12 col-md-4">
+        <input type="text" name="search" value="<%= filters.search %>" class="form-control form-control-sm" placeholder="Search room number or name..." />
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="type" class="form-select form-select-sm">
+          <option value="">All Types</option>
+          <% for (const rt of roomTypes) { %>
+            <option value="<%= rt.name %>" <%= filters.type === rt.name ? 'selected' : '' %>><%= rt.name %></option>
+          <% } %>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="status" class="form-select form-select-sm">
+          <option value="">All Statuses</option>
+          <% for (const s of statuses) { %>
+            <option value="<%= s %>" <%= filters.status === s ? 'selected' : '' %>><%= s.replace(/_/g,' ') %></option>
+          <% } %>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <button type="submit" class="btn btn-sm btn-primary w-100"><i class="fas fa-search me-1"></i>Search</button>
+      </div>
+      <div class="col-6 col-md-2">
+        <a href="/rooms" class="btn btn-sm btn-outline-secondary w-100">Clear</a>
+      </div>
+    </form>
+  </div>
+</div>
+
+<!-- Room Cards Grid -->
+<% if (!rooms || rooms.length === 0) { %>
+  <div class="empty-state card">
+    <i class="fas fa-door-closed"></i>
+    <p>No rooms found. <a href="/rooms/new">Add the first room.</a></p>
+  </div>
+<% } else { %>
+  <div class="row g-3">
+    <% for (const room of rooms) { %>
+    <div class="col-12 col-sm-6 col-lg-4 col-xl-3">
+      <div class="room-card card h-100">
+        <%# Cover image or gradient placeholder %>
+        <% if (room.imagesList && room.imagesList.length > 0) { %>
+          <div class="position-relative">
+            <img src="<%= room.imagesList[0] %>" alt="<%= room.name %>"
+              class="card-img-top rounded-top"
+              style="height:150px;object-fit:cover;" />
+            <div style="position:absolute;top:.5rem;right:.5rem;">
+              <%- statusBadge(room.status) %>
+            </div>
+          </div>
+        <% } else { %>
+          <div class="position-relative d-flex align-items-center justify-content-center rounded-top"
+            style="height:150px;background:linear-gradient(135deg,#1e1b4b,#4f46e5);color:rgba(255,255,255,.3);font-size:2.5rem;">
+            <i class="fas fa-door-open"></i>
+            <div style="position:absolute;top:.5rem;right:.5rem;">
+              <%- statusBadge(room.status) %>
+            </div>
+          </div>
+        <% } %>
+        <div class="room-card-body card-body">
+          <div class="room-number"># <%= room.room_number %></div>
+          <h6 class="room-name"><a href="/rooms/<%= room.id %>"><%= room.name %></a></h6>
+          <div class="room-type text-muted small"><%= room.type_name %></div>
+          <div class="room-meta mt-2">
+            <span><i class="fas fa-users text-muted me-1"></i><%= room.capacity %> guests</span>
+            <span class="fw-bold text-primary"><%= formatPeso(room.price) %>/night</span>
+          </div>
+          <% if (room.floor) { %>
+          <div class="text-muted small mt-1"><i class="fas fa-layer-group me-1"></i><%= room.floor %></div>
+          <% } %>
+        </div>
+        <div class="room-card-footer card-footer d-flex gap-2">
+          <a href="/rooms/<%= room.id %>" class="btn btn-sm btn-outline-primary flex-fill">View</a>
+          <% if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'staff')) { %>
+          <a href="/rooms/<%= room.id %>/edit" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit"></i></a>
+          <% } %>
+        </div>
+      </div>
+    </div>
+    <% } %>
+  </div>
+
+  <!-- Pagination -->
+  <%include('partials/pagination')%>
+<% } %>

@@ -1,0 +1,318 @@
+<% layout('layouts/main') %>
+
+<style>
+.fc { font-family: 'Segoe UI', system-ui, sans-serif; font-size: 13px; }
+.fc-toolbar-title { font-size: 1.1rem; font-weight: 700; }
+.fc-button-primary { background:#4f46e5 !important; border-color:#4f46e5 !important; font-size:.8rem !important; }
+.fc-button-primary:not(:disabled):active,
+.fc-button-primary:not(:disabled).fc-button-active { background:#3730a3 !important; border-color:#3730a3 !important; }
+.fc-button-primary:hover { background:#3730a3 !important; border-color:#3730a3 !important; }
+.fc-day-today { background:rgba(79,70,229,.06) !important; }
+.fc-event { border-radius:4px !important; font-size:.75rem !important; padding:1px 4px !important; cursor:pointer; }
+.fc-event:hover { opacity:.85; }
+.fc-list-event:hover td { background:#f3f4f6 !important; }
+#calendarContainer { min-height: 650px; width: 100%; }
+</style>
+
+<div class="page-header">
+  <div>
+    <h3 class="mb-1">Booking Calendar</h3>
+    <p class="text-muted mb-0">Visual overview of all reservations, check-ins, check-outs, and events</p>
+  </div>
+  <div class="page-header-actions">
+    <a href="/reservations/new" class="btn btn-sm btn-primary">
+      <i class="fas fa-plus me-1"></i>New Reservation
+    </a>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body py-2 d-flex flex-wrap gap-3 align-items-center">
+    <strong class="small text-muted me-1">Legend:</strong>
+    <span class="d-flex align-items-center gap-1"><span class="legend-dot" style="background:#f59e0b;width:10px;height:10px;border-radius:50%;display:inline-block;"></span><span class="small">Pending</span></span>
+    <span class="d-flex align-items-center gap-1"><span class="legend-dot" style="background:#3b82f6;width:10px;height:10px;border-radius:50%;display:inline-block;"></span><span class="small">Awaiting Payment</span></span>
+    <span class="d-flex align-items-center gap-1"><span class="legend-dot" style="background:#10b981;width:10px;height:10px;border-radius:50%;display:inline-block;"></span><span class="small">Confirmed</span></span>
+    <span class="d-flex align-items-center gap-1"><span class="legend-dot" style="background:#6366f1;width:10px;height:10px;border-radius:50%;display:inline-block;"></span><span class="small">Checked In</span></span>
+    <span class="d-flex align-items-center gap-1"><span class="legend-dot" style="background:#6b7280;width:10px;height:10px;border-radius:50%;display:inline-block;"></span><span class="small">Completed</span></span>
+    <span class="d-flex align-items-center gap-1"><span class="legend-dot" style="background:#ef4444;width:10px;height:10px;border-radius:50%;display:inline-block;"></span><span class="small">Cancelled</span></span>
+    <span class="d-flex align-items-center gap-1"><span class="legend-dot" style="background:#ec4899;width:10px;height:10px;border-radius:50%;display:inline-block;"></span><span class="small">Event</span></span>
+  </div>
+</div>
+
+<div class="card mb-3">
+  <div class="card-body py-2 d-flex flex-wrap gap-3 align-items-center">
+    <strong class="small text-muted">Filter:</strong>
+    <div class="form-check form-check-inline mb-0">
+      <input class="form-check-input" type="checkbox" id="showRoom" checked>
+      <label class="form-check-label small" for="showRoom">Rooms</label>
+    </div>
+    <div class="form-check form-check-inline mb-0">
+      <input class="form-check-input" type="checkbox" id="showVenue" checked>
+      <label class="form-check-label small" for="showVenue">Venues</label>
+    </div>
+    <div class="form-check form-check-inline mb-0">
+      <input class="form-check-input" type="checkbox" id="showEvent" checked>
+      <label class="form-check-label small" for="showEvent">Events</label>
+    </div>
+    <div class="form-check form-check-inline mb-0">
+      <input class="form-check-input" type="checkbox" id="showCottage" checked>
+      <label class="form-check-label small" for="showCottage">Cottages</label>
+    </div>
+    <div class="form-check form-check-inline mb-0">
+      <input class="form-check-input" type="checkbox" id="showCancelled">
+      <label class="form-check-label small" for="showCancelled">Cancelled</label>
+    </div>
+
+    <%# ── Date range filter ── %>
+    <span class="vr d-none d-md-inline"></span>
+    <div class="d-flex flex-wrap align-items-center gap-2">
+      <strong class="small text-muted">Booking date:</strong>
+      <input type="date" id="dateFrom" class="form-control form-control-sm" style="max-width:150px;" title="From date" />
+      <span class="small text-muted">to</span>
+      <input type="date" id="dateTo" class="form-control form-control-sm" style="max-width:150px;" title="To date" />
+      <button type="button" id="applyDateFilter" class="btn btn-sm btn-primary"><i class="fas fa-filter me-1"></i>Apply</button>
+      <button type="button" id="clearDateFilter" class="btn btn-sm btn-outline-secondary">Clear</button>
+    </div>
+  </div>
+</div>
+
+<div class="card">
+  <div class="card-body p-3">
+    <div id="calendarContainer"></div>
+  </div>
+</div>
+
+<div class="modal fade" id="eventModal" tabindex="-1">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header text-white" id="eventModalHeader" style="background:#4f46e5;">
+        <h5 class="modal-title" id="eventModalTitle">Booking Details</h5>
+        <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body" id="eventModalBody"></div>
+      <div class="modal-footer">
+        <a href="#" id="eventModalLink" class="btn btn-primary btn-sm">
+          <i class="fas fa-external-link-alt me-1"></i>View Reservation
+        </a>
+        <button type="button" class="btn btn-outline-secondary btn-sm" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+window.addEventListener('load', function () {
+
+  var rawEvents = <%- calendarEvents %>;
+
+  var STATUS_COLORS = {
+    pending:          '#f59e0b',
+    awaiting_payment: '#3b82f6',
+    confirmed:        '#10b981',
+    checked_in:       '#6366f1',
+    completed:        '#6b7280',
+    cancelled:        '#ef4444',
+    rejected:         '#dc2626',
+    no_show:          '#1f2937'
+  };
+
+  var TYPE_LABELS = {
+    room:    '[Room]',
+    venue:   '[Venue]',
+    event:   '[Event]',
+    cottage: '[Cottage]'
+  };
+
+  function buildEvents(raw) {
+    return raw.map(function (r) {
+      var color  = r.is_event ? '#ec4899' : (STATUS_COLORS[r.status] || '#6b7280');
+      var type   = TYPE_LABELS[r.reservation_type] || '';
+      var name   = r.is_event ? (r.event_name || r.title) : (r.customer_name || r.title || '');
+      var label  = name + ' ' + type;
+
+      var start  = r.checkin_date || r.event_date || '';
+      var end    = r.checkout_date || r.event_date || '';
+
+      if (r.is_all_day && end) {
+        var d = new Date(end);
+        d.setDate(d.getDate() + 1);
+        end = d.toISOString().slice(0, 10);
+      }
+
+      return {
+        id:    String(r.id) + (r.is_event ? '_ev' : '_res'),
+        title: label,
+        start: start,
+        end:   end || start,
+        allDay: true,
+        backgroundColor: color,
+        borderColor:     color,
+        textColor:       '#ffffff',
+        extendedProps: {
+          reservationId: r.reservation_id || r.id,
+          status:        r.status || '',
+          type:          r.reservation_type || '',
+          isEvent:       !!r.is_event,
+          customerName:  r.customer_name || '',
+          bookingRef:    r.booking_ref || '',
+          checkin:       r.checkin_date || '',
+          checkout:      r.checkout_date || '',
+          eventDate:     r.event_date || '',
+          startTime:     r.start_time || '',
+          endTime:       r.end_time || '',
+          numGuests:     r.num_guests || '',
+          paymentStatus: r.payment_status || '',
+          venueName:     r.venue_name || '',
+          roomName:      r.room_name || '',
+          eventName:     r.event_name || '',
+          // Inclusive date range of the booking itself (for the date filter).
+          rangeStart:    (r.checkin_date || r.event_date || '').slice(0, 10),
+          rangeEnd:      (r.checkout_date || r.event_date || r.checkin_date || '').slice(0, 10)
+        }
+      };
+    });
+  }
+
+  var allEvents = buildEvents(rawEvents);
+
+  var filterRoom     = document.getElementById('showRoom');
+  var filterVenue    = document.getElementById('showVenue');
+  var filterEvent    = document.getElementById('showEvent');
+  var filterCottage  = document.getElementById('showCottage');
+  var filterCancelled= document.getElementById('showCancelled');
+  var dateFromEl     = document.getElementById('dateFrom');
+  var dateToEl       = document.getElementById('dateTo');
+
+  // Active date-range filter (null when not applied).
+  var dateRange = { from: '', to: '' };
+
+  function getFiltered() {
+    return allEvents.filter(function (e) {
+      var t = e.extendedProps.type;
+      var s = e.extendedProps.status;
+      if (t === 'room'    && !filterRoom.checked)     return false;
+      if (t === 'venue'   && !filterVenue.checked)    return false;
+      if (t === 'event'   && !filterEvent.checked)    return false;
+      if (t === 'cottage' && !filterCottage.checked)  return false;
+      if ((s === 'cancelled' || s === 'rejected') && !filterCancelled.checked) return false;
+
+      // Date-range filter: show only bookings whose date range overlaps the
+      // selected [from, to]. Either bound may be left blank (open-ended).
+      if (dateRange.from || dateRange.to) {
+        var bStart = e.extendedProps.rangeStart || '';
+        var bEnd   = e.extendedProps.rangeEnd || bStart;
+        if (!bStart) return false;
+        if (dateRange.from && bEnd  < dateRange.from) return false;  // booking ends before window
+        if (dateRange.to   && bStart > dateRange.to)   return false; // booking starts after window
+      }
+      return true;
+    });
+  }
+
+  function refreshEvents() {
+    calendar.removeAllEvents();
+    calendar.addEventSource(getFiltered());
+  }
+
+  var calEl = document.getElementById('calendarContainer');
+  var bsModal = new bootstrap.Modal(document.getElementById('eventModal'));
+
+  var calendar = new FullCalendar.Calendar(calEl, {
+    initialView:  'dayGridMonth',
+    height:       'auto',
+    firstDay:     0,
+    navLinks:     true,
+    headerToolbar: {
+      left:   'prev,next today',
+      center: 'title',
+      right:  'dayGridMonth,timeGridWeek,listWeek'
+    },
+    buttonText: {
+      today: 'Today',
+      month: 'Month',
+      week:  'Week',
+      list:  'Agenda'
+    },
+    events: getFiltered(),
+
+    eventClick: function (info) {
+      info.jsEvent.preventDefault();
+      var p     = info.event.extendedProps;
+      var color = info.event.backgroundColor;
+
+      document.getElementById('eventModalHeader').style.background = color;
+      document.getElementById('eventModalTitle').textContent = info.event.title;
+
+      var rows = '';
+      rows += '<tr><th width="35%">Customer</th><td>' + (p.customerName || '&mdash;') + '</td></tr>';
+      rows += '<tr><th>Booking Ref</th><td><code>' + (p.bookingRef || '&mdash;') + '</code></td></tr>';
+      rows += '<tr><th>Type</th><td><span class="badge bg-light text-dark">' + (p.type || '&mdash;') + '</span></td></tr>';
+
+      if (p.isEvent) {
+        rows += '<tr><th>Event</th><td>' + (p.eventName || '&mdash;') + '</td></tr>';
+        rows += '<tr><th>Date</th><td>' + (p.eventDate || '&mdash;') + (p.startTime ? ' &nbsp; ' + p.startTime + ' &ndash; ' + p.endTime : '') + '</td></tr>';
+        if (p.venueName) rows += '<tr><th>Venue</th><td>' + p.venueName + '</td></tr>';
+      } else if (p.type === 'room' || p.type === 'cottage') {
+        rows += '<tr><th>Check-in</th><td>' + (p.checkin || '&mdash;') + '</td></tr>';
+        rows += '<tr><th>Check-out</th><td>' + (p.checkout || '&mdash;') + '</td></tr>';
+        if (p.roomName) rows += '<tr><th>Room</th><td>' + p.roomName + '</td></tr>';
+      } else {
+        rows += '<tr><th>Date</th><td>' + (p.eventDate || p.checkin || '&mdash;') + '</td></tr>';
+        if (p.venueName) rows += '<tr><th>Venue</th><td>' + p.venueName + '</td></tr>';
+      }
+
+      rows += '<tr><th>Guests</th><td>' + (p.numGuests || '&mdash;') + '</td></tr>';
+      rows += '<tr><th>Status</th><td><span class="badge" style="background:' + color + ';color:#fff">' + p.status.replace(/_/g, ' ') + '</span></td></tr>';
+      rows += '<tr><th>Payment</th><td>' + (p.paymentStatus || '&mdash;').replace(/_/g, ' ') + '</td></tr>';
+
+      document.getElementById('eventModalBody').innerHTML = '<table class="table table-sm table-borderless mb-0">' + rows + '</table>';
+      document.getElementById('eventModalLink').href = '/reservations/' + p.reservationId;
+      bsModal.show();
+    },
+
+    eventDidMount: function (info) {
+      var p = info.event.extendedProps;
+      var lines = [info.event.title];
+      if (p.checkin)   lines.push('Check-in: ' + p.checkin);
+      if (p.checkout)  lines.push('Check-out: ' + p.checkout);
+      if (p.eventDate && !p.checkin) lines.push('Date: ' + p.eventDate);
+      lines.push('Status: ' + p.status);
+      info.el.title = lines.join('\n');
+    }
+  });
+
+  calendar.render();
+
+  [filterRoom, filterVenue, filterEvent, filterCottage, filterCancelled].forEach(function (chk) {
+    chk.addEventListener('change', refreshEvents);
+  });
+
+  // ── Date range filter buttons ──
+  document.getElementById('applyDateFilter').addEventListener('click', function () {
+    var from = dateFromEl.value;
+    var to   = dateToEl.value;
+    if (from && to && from > to) {
+      if (window.appNotify) window.appNotify('The "From" date cannot be after the "To" date.', 'warning');
+      else alert('The "From" date cannot be after the "To" date.');
+      return;
+    }
+    dateRange.from = from;
+    dateRange.to   = to;
+    refreshEvents();
+    // Jump the calendar to the start of the selected range for convenience.
+    if (from) calendar.gotoDate(from);
+    if (window.appNotify && (from || to)) {
+      window.appNotify('Showing bookings' + (from ? ' from ' + from : '') + (to ? ' to ' + to : '') + '.', 'info');
+    }
+  });
+
+  document.getElementById('clearDateFilter').addEventListener('click', function () {
+    dateFromEl.value = '';
+    dateToEl.value   = '';
+    dateRange.from = '';
+    dateRange.to   = '';
+    refreshEvents();
+  });
+
+});
+</script>

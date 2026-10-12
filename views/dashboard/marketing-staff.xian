@@ -1,0 +1,144 @@
+<% layout('layouts/main') %>
+
+<div class="page-header">
+  <div>
+    <h3 class="mb-1">Marketing Dashboard</h3>
+    <p class="text-muted mb-0">Welcome, <%= currentUser.firstName %>! Here's your CRM and marketing overview.</p>
+  </div>
+  <div class="page-header-actions">
+    <a href="/crm/customers/new" class="btn btn-primary btn-sm"><i class="fas fa-user-plus me-1"></i>Add Customer</a>
+    <a href="/crm" class="btn btn-outline-secondary btn-sm"><i class="fas fa-user-tie me-1"></i>CRM</a>
+  </div>
+</div>
+
+<!-- Stats -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-primary">
+      <div class="stat-icon"><i class="fas fa-users"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.totalCustomers %></div>
+        <div class="stat-label">Active Customers</div>
+        <div class="stat-sub">+<%= stats.newCustomers %> this month</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-warning">
+      <div class="stat-icon"><i class="fas fa-crown"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.vipCustomers %></div>
+        <div class="stat-label">VIP Customers</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-info">
+      <div class="stat-icon"><i class="fas fa-phone"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.callsThisMonth %></div>
+        <div class="stat-label">Calls This Month</div>
+        <div class="stat-sub"><%= stats.openTickets %> open tickets</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-success">
+      <div class="stat-icon"><i class="fas fa-star"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.avgRating || '—' %> <i class="fas fa-star" style="font-size:.85rem;color:#f59e0b"></i></div>
+        <div class="stat-label">Avg Customer Rating</div>
+        <div class="stat-sub"><%= stats.openInquiries %> open inquiries</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3 mb-4">
+  <!-- Customer Type Chart -->
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-chart-pie me-2 text-primary"></i>Customer Types</h6></div>
+      <div class="card-body d-flex align-items-center justify-content-center">
+        <canvas id="custTypeChart" height="200"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Rating Trend -->
+  <div class="col-lg-8">
+    <div class="card h-100">
+      <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-chart-line me-2 text-warning"></i>Customer Satisfaction Trend</h6></div>
+      <div class="card-body"><canvas id="ratingChart" height="150"></canvas></div>
+    </div>
+  </div>
+</div>
+
+<div class="row g-3">
+  <!-- Recent Feedback -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0"><i class="fas fa-star me-2 text-warning"></i>Recent Feedback</h6>
+        <a href="/feedback" class="btn btn-sm btn-outline-warning">All Feedback</a>
+      </div>
+      <div class="card-body">
+        <% if (!recentFeedback || recentFeedback.length === 0) { %>
+        <div class="empty-state"><i class="fas fa-star-half-alt"></i><p>No feedback yet</p></div>
+        <% } else { %>
+          <% for (const f of recentFeedback) { %>
+          <div class="d-flex gap-3 pb-3 mb-3 border-bottom">
+            <div class="flex-shrink-0">
+              <% for (let s=1;s<=5;s++) { %><i class="fas fa-star" style="color:<%= s<=f.rating ? '#f59e0b' : '#d1d5db' %>; font-size:.75rem;"></i><% } %>
+            </div>
+            <div class="flex-grow-1">
+              <div class="fw-medium small"><%= f.customer_name %></div>
+              <div class="text-muted small"><%= f.comments ? f.comments.slice(0,80) + (f.comments.length > 80 ? '…' : '') : '—' %></div>
+              <div class="mt-1"><code class="small"><%= f.booking_ref %></code> <span class="text-muted small">&middot; <%= formatDate(f.created_at) %></span></div>
+            </div>
+          </div>
+          <% } %>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Recent CRM Activities -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0"><i class="fas fa-history me-2 text-info"></i>Recent CRM Activity</h6>
+        <a href="/crm" class="btn btn-sm btn-outline-info">CRM</a>
+      </div>
+      <div class="card-body p-0">
+        <% if (!recentActivities || recentActivities.length === 0) { %>
+        <div class="empty-state py-4"><i class="fas fa-history"></i><p>No activities yet</p></div>
+        <% } else { %>
+          <% for (const a of recentActivities) { %>
+          <div class="d-flex align-items-start gap-2 p-3 border-bottom">
+            <div class="flex-shrink-0">
+              <span class="badge bg-light text-dark small"><%= a.activity_type %></span>
+            </div>
+            <div class="flex-grow-1">
+              <div class="fw-medium small"><%= a.customer_name %></div>
+              <div class="text-muted small"><%= a.subject || a.activity_type %></div>
+              <div class="text-muted small"><%= formatDate(a.created_at) %></div>
+            </div>
+          </div>
+          <% } %>
+        <% } %>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const ct = <%- customerTypeChartJson || '[]' %>;
+  const rt = <%- ratingTrendJson       || '[]' %>;
+  const ctc = document.getElementById('custTypeChart');
+  if (ctc && ct.length) new Chart(ctc,{type:'doughnut',data:{labels:ct.map(d=>d.customer_type),datasets:[{data:ct.map(d=>d.cnt),backgroundColor:['#4f46e5','#f59e0b','#10b981']}]},options:{responsive:true,plugins:{legend:{position:'bottom',labels:{boxWidth:12}}},cutout:'60%'}});
+  const rtc = document.getElementById('ratingChart');
+  if (rtc && rt.length) new Chart(rtc,{type:'line',data:{labels:rt.map(d=>d.month),datasets:[{label:'Avg Rating',data:rt.map(d=>d.avg),borderColor:'#f59e0b',backgroundColor:'rgba(245,158,11,.1)',fill:true,tension:.4}]},options:{responsive:true,plugins:{legend:{display:false}},scales:{y:{min:0,max:5,ticks:{stepSize:1}}}}});
+})();
+</script>

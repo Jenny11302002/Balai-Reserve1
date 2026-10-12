@@ -1,0 +1,51 @@
+<% layout('layouts/main') %>
+<div class="page-header">
+  <div><h3 class="mb-1">Events</h3><p class="text-muted mb-0">Manage all event bookings</p></div>
+  <div class="page-header-actions">
+    <% if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'staff')) { %>
+    <a href="/events/new" class="btn btn-sm btn-primary"><i class="fas fa-plus me-1"></i>New Event</a>
+    <% } %>
+  </div>
+</div>
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="GET" action="/events" class="row g-2 align-items-end">
+      <div class="col-12 col-md-3"><input type="text" name="search" value="<%= filters.search %>" class="form-control form-control-sm" placeholder="Event name or customer..." /></div>
+      <div class="col-6 col-md-2"><select name="type" class="form-select form-select-sm"><option value="">All Types</option><% for (const t of eventTypes) { %><option value="<%= t %>" <%= filters.type === t ? 'selected' : '' %>><%= t.replace(/_/g,' ') %></option><% } %></select></div>
+      <div class="col-6 col-md-2"><select name="status" class="form-select form-select-sm"><option value="">All Statuses</option><% for (const s of statuses) { %><option value="<%= s %>" <%= filters.status === s ? 'selected' : '' %>><%= s %></option><% } %></select></div>
+      <div class="col-6 col-md-2"><input type="date" name="from" value="<%= filters.from %>" class="form-control form-control-sm" /></div>
+      <div class="col-6 col-md-2"><input type="date" name="to" value="<%= filters.to %>" class="form-control form-control-sm" /></div>
+      <div class="col-6 col-md-1"><button type="submit" class="btn btn-sm btn-primary w-100"><i class="fas fa-search"></i></button></div>
+    </form>
+  </div>
+</div>
+<div class="card">
+  <div class="card-body p-0">
+    <div class="table-responsive">
+      <table class="table table-hover mb-0">
+        <thead><tr><th>Event Name</th><th>Customer</th><th>Type</th><th>Date</th><th>Time</th><th>Venue</th><th>Attendees</th><th>Cost</th><th>Status</th><th></th></tr></thead>
+        <tbody>
+          <% if (!events || events.length === 0) { %>
+          <tr><td colspan="10" class="text-center py-4 text-muted">No events found.</td></tr>
+          <% } else { %>
+            <% for (const e of events) { %>
+            <tr>
+              <td><a href="/events/<%= e.id %>" class="fw-medium"><%= e.event_name %></a></td>
+              <td><%= e.customer_name %></td>
+              <td><span class="badge bg-light text-dark small"><%= e.event_type %></span></td>
+              <td class="small text-nowrap"><%= formatDate(e.event_date) %></td>
+              <td class="small text-nowrap"><%= e.start_time %> – <%= e.end_time %></td>
+              <td class="small"><%= e.venue_name || '—' %></td>
+              <td class="text-center"><%= e.num_attendees %></td>
+              <td class="fw-medium"><%= formatPeso(e.total_cost) %></td>
+              <td><%- statusBadge(e.status) %></td>
+              <td><a href="/events/<%= e.id %>" class="btn btn-xs btn-outline-primary">View</a></td>
+            </tr>
+            <% } %>
+          <% } %>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div class="card-footer"><%include('partials/pagination')%></div>
+</div>

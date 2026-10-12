@@ -1,0 +1,305 @@
+/**
+ * Reports Routes
+ */
+'use strict';
+
+const express = require('express');
+const ExcelJS = require('exceljs');
+const db      = require('../../../config/database');
+const { requireAuth, requireRole } = require('../../../middleware/auth');
+
+const router = express.Router();
+
+// ── Helper: resort branding for report headers/footers ──────────────────────
+function getResortInfo() {
+  const rows = db.prepare(
+    "SELECT key, value FROM settings WHERE key IN ('resort_name','resort_address','resort_phone','resort_email')"
+  ).all();
+  const s = {};
+  for (const r of rows) s[r.key] = r.value;
+  return {
+    name:    s.resort_name    || 'Balai-Reserve',
+    address: s.resort_address || '',
+    phone:   s.resort_phone   || '',
+    email:   s.resort_email   || '',
+  };
+}
+
+const REPORT_TITLES = {
+  sales:        'Sales Report',
+  reservations: 'Reservation Report',
+  events:       'Event Report',
+};
+
+function escapeHtml(v) {
+  return String(v ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// GET /reports
+router.get('/', requireAuth, requireRole('admin','staff'), (req, res) => {
+  res.render('reports/index', { title: 'Reports – Balai-Reserve', layout: 'layouts/main' });
+});
+
+// GET /reports/sales
+router.get('/sales', requireAuth, requireRole('admin'), (req, res) => {
+  const { from = '', to = '', type = 'monthly' } = req.query;
+  const today    = new Date().toISOString().slice(0, 10);
+  const fromDate = from || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
+  const toDate   = to   || today;
+
+  let groupBy, labelFormat;
+  if (type === 'daily')   { groupBy = `DATE(payment_date)`;           labelFormat = 'Date'; }
+  else if (type === 'weekly') { groupBy = `strftime('%Y-W%W', payment_date)`; labelFormat = 'Week'; }
+  else if (type === 'yearly') { groupBy = `strftime('%Y', payment_date)`;     labelFormat = 'Year'; }
+  else                    { groupBy = `strftime('%Y-%m', payment_date)`;  labelFormat = 'Month'; } // monthly default
+
+  const salesData = db.prepare(`
+    SELECT ${groupBy} AS period,
+           SUM(amount) AS total,
+           COUNT(*) AS transactions
+    FROM payments
+    WHERE status IN ('received','verified')
+      AND payment_date >= ? AND payment_date <= ?
+    GROUP BY period
+    ORDER BY period
+  `).all(fromDate, toDate + ' 23:59:59');
+
+  const totalRevenue = salesData.reduce((s, r) => s + r.total, 0);
+  const totalTxns    = salesData.reduce((s, r) => s + r.transactions, 0);
+
+  // Revenue by type
+  const byType = db.prepare(`
+    SELECT r.reservation_type, SUM(p.amount) AS total
+    FROM payments p JOIN reservations r ON r.id=p.reservation_id
+    WHERE p.status IN ('received','verified') AND p.payment_date >= ? AND p.payment_date <= ?
+    GROUP BY r.reservation_type
+  `).all(fromDate, toDate + ' 23:59:59');
+
+  res.render('reports/sales', {
+    title: 'Sales Report', layout: 'layouts/main',
+    salesData, byType, totalRevenue, totalTxns,
+    filters: { from: fromDate, to: toDate, type }, labelFormat,
+    salesDataJson: JSON.stringify(salesData),
+    resort: getResortInfo(),
+  });
+});
+
+// GET /reports/reservations
+router.get('/reservations', requireAuth, requireRole('admin','staff'), (req, res) => {
+  const { from='', to='', status='', type='' } = req.query;
+  const today    = new Date().toISOString().slice(0, 10);
+  const fromDate = from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
+  const toDate   = to   || today;
+
+  let where  = `WHERE r.created_at >= ? AND r.created_at <= ?`;
+  const params = [fromDate, toDate + ' 23:59:59'];
+
+  if (status) { where += ` AND r.status = ?`;            params.push(status); }
+  if (type)   { where += ` AND r.reservation_type = ?`;  params.push(type); }
+
+  const reservations = db.prepare(`
+    SELECT r.*, c.first_name || ' ' || c.last_name AS customer_name
+    FROM reservations r JOIN customers c ON c.id=r.customer_id
+    ${where}
+    ORDER BY r.created_at DESC
+  `).all(...params);
+
+  const statusSummary = db.prepare(`
+    SELECT status, COUNT(*) AS cnt FROM reservations
+    WHERE created_at >= ? AND created_at <= ?
+    GROUP BY status
+  `).all(fromDate, toDate + ' 23:59:59');
+
+  const typeSummary = db.prepare(`
+    SELECT reservation_type, COUNT(*) AS cnt FROM reservations
+    WHERE created_at >= ? AND created_at <= ?
+    GROUP BY reservation_type
+  `).all(fromDate, toDate + ' 23:59:59');
+
+  res.render('reports/reservations', {
+    title: 'Reservation Report', layout: 'layouts/main',
+    reservations, statusSummary, typeSummary,
+    filters: { from: fromDate, to: toDate, status, type },
+    resort: getResortInfo(),
+  });
+});
+
+// GET /reports/events
+router.get('/events', requireAuth, requireRole('admin','staff'), (req, res) => {
+  const { from='', to='' } = req.query;
+  const today    = new Date().toISOString().slice(0, 10);
+  const fromDate = from || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
+  const toDate   = to   || today;
+
+  const events = db.prepare(`
+    SELECT e.*, c.first_name || ' ' || c.last_name AS customer_name, v.name AS venue_name
+    FROM events e JOIN customers c ON c.id=e.customer_id LEFT JOIN venues v ON v.id=e.venue_id
+    WHERE e.event_date >= ? AND e.event_date <= ?
+    ORDER BY e.event_date DESC
+  `).all(fromDate, toDate);
+
+  const byType = db.prepare(`
+    SELECT event_type, COUNT(*) AS cnt, SUM(total_cost) AS revenue
+    FROM events WHERE event_date >= ? AND event_date <= ?
+    GROUP BY event_type
+  `).all(fromDate, toDate);
+
+  const totalAttendees = events.reduce((s, e) => s + (e.num_attendees || 0), 0);
+  const totalRevenue   = events.reduce((s, e) => s + (e.total_cost || 0), 0);
+
+  res.render('reports/events', {
+    title: 'Event Report', layout: 'layouts/main',
+    events, byType, totalAttendees, totalRevenue,
+    filters: { from: fromDate, to: toDate },
+    resort: getResortInfo(),
+  });
+});
+
+// GET /reports/export/:reportType?format=csv|xlsx|docx  — branded export
+router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req, res) => {
+  const { reportType } = req.params;
+  const format   = (req.query.format || 'csv').toLowerCase();
+  const { from='', to='' } = req.query;
+  const today    = new Date().toISOString().slice(0, 10);
+  const fromDate = from || '2020-01-01';
+  const toDate   = to   || today;
+
+  let rows = [];
+  let filename = 'report';
+  let headers  = [];
+
+  if (reportType === 'sales') {
+    rows     = db.prepare(`
+      SELECT p.*, r.booking_ref, r.reservation_type,
+             c.first_name || ' ' || c.last_name AS customer
+      FROM payments p
+      JOIN reservations r ON r.id = p.reservation_id
+      LEFT JOIN customers c ON c.id = r.customer_id
+      WHERE p.payment_date >= ? AND p.payment_date <= ?
+      ORDER BY p.payment_date
+    `).all(fromDate, toDate + ' 23:59:59');
+    headers  = ['id','booking_ref','customer','reservation_type','amount','payment_method','payment_date','payment_type','status'];
+    filename = `sales-${fromDate}-to-${toDate}`;
+  } else if (reportType === 'reservations') {
+    rows     = db.prepare(`SELECT r.*, c.first_name || ' ' || c.last_name AS customer FROM reservations r JOIN customers c ON c.id=r.customer_id WHERE r.created_at >= ? AND r.created_at <= ? ORDER BY r.created_at`).all(fromDate, toDate + ' 23:59:59');
+    headers  = ['id','booking_ref','customer','reservation_type','check_in_date','check_out_date','event_date','num_guests','total_amount','status','payment_status','created_at'];
+    filename = `reservations-${fromDate}-to-${toDate}`;
+  } else if (reportType === 'events') {
+    rows     = db.prepare(`SELECT e.*, c.first_name || ' ' || c.last_name AS customer FROM events e JOIN customers c ON c.id=e.customer_id WHERE e.event_date >= ? AND e.event_date <= ? ORDER BY e.event_date`).all(fromDate, toDate);
+    headers  = ['id','event_name','customer','event_type','event_date','start_time','end_time','num_attendees','total_cost','payment_status','status'];
+    filename = `events-${fromDate}-to-${toDate}`;
+  } else {
+    return res.status(400).send('Unknown report type.');
+  }
+
+  const resort    = getResortInfo();
+  const title     = REPORT_TITLES[reportType] || 'Report';
+  const generated = new Date().toLocaleString('en-PH');
+  const prettyHeaders = headers.map(h => h.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
+
+  // ── Excel (xlsx) via exceljs ───────────────────────────────────────────────
+  if (format === 'xlsx') {
+    const wb = new ExcelJS.Workbook();
+    wb.creator = resort.name;
+    const ws = wb.addWorksheet(title, {
+      pageSetup: { fitToPage: true, fitToWidth: 1, orientation: 'landscape', margins: { left:0.4, right:0.4, top:0.6, bottom:0.6, header:0.3, footer:0.3 } },
+      headerFooter: {
+        oddHeader: `&L&B${resort.name}&R${title}`,
+        oddFooter: `&L${resort.address}&CPage &P of &N&R${resort.phone}`,
+      },
+    });
+    const lastCol = headers.length;
+    const colLetter = (n) => { let s=''; while(n>0){ const m=(n-1)%26; s=String.fromCharCode(65+m)+s; n=Math.floor((n-1)/26);} return s; };
+    const span = `A1:${colLetter(lastCol)}1`;
+
+    // Branded title block
+    ws.mergeCells(span);
+    ws.getCell('A1').value = resort.name;
+    ws.getCell('A1').font  = { size: 16, bold: true, color: { argb: 'FF15803D' } };
+    ws.getCell('A1').alignment = { horizontal: 'center' };
+    ws.mergeCells(`A2:${colLetter(lastCol)}2`);
+    ws.getCell('A2').value = resort.address + (resort.phone ? '  |  Tel: ' + resort.phone : '') + (resort.email ? '  |  ' + resort.email : '');
+    ws.getCell('A2').alignment = { horizontal: 'center' };
+    ws.getCell('A2').font = { size: 10, color: { argb: 'FF6B7280' } };
+    ws.mergeCells(`A3:${colLetter(lastCol)}3`);
+    ws.getCell('A3').value = `${title}  —  ${fromDate} to ${toDate}   (Generated: ${generated})`;
+    ws.getCell('A3').alignment = { horizontal: 'center' };
+    ws.getCell('A3').font = { size: 11, bold: true };
+    ws.addRow([]);
+
+    // Header row
+    const headerRow = ws.addRow(prettyHeaders);
+    headerRow.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: 'FFFFFFFF' } };
+      cell.fill = { type: 'pattern', pattern: 'solid', fgColor: { argb: 'FF15803D' } };
+      cell.alignment = { horizontal: 'center' };
+      cell.border = { bottom: { style: 'thin' } };
+    });
+
+    // Data rows
+    for (const row of rows) {
+      ws.addRow(headers.map(h => row[h] ?? ''));
+    }
+    // Auto width
+    ws.columns.forEach((col, i) => {
+      let max = prettyHeaders[i] ? prettyHeaders[i].length : 10;
+      col.eachCell({ includeEmpty: false }, (cell) => {
+        const len = String(cell.value ?? '').length;
+        if (len > max) max = len;
+      });
+      col.width = Math.min(Math.max(max + 2, 10), 40);
+    });
+
+    res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.xlsx"`);
+    await wb.xlsx.write(res);
+    return res.end();
+  }
+
+  // ── Word (.doc via HTML) ────────────────────────────────────────────────────
+  if (format === 'docx' || format === 'doc' || format === 'word') {
+    const th = prettyHeaders.map(h => `<th style="background:#15803d;color:#fff;padding:6px 8px;border:1px solid #cbd5e1;text-align:left;">${escapeHtml(h)}</th>`).join('');
+    const trs = rows.map(row => {
+      const tds = headers.map(h => `<td style="padding:5px 8px;border:1px solid #cbd5e1;">${escapeHtml(row[h] ?? '')}</td>`).join('');
+      return `<tr>${tds}</tr>`;
+    }).join('');
+    const html = `<!DOCTYPE html><html><head><meta charset="utf-8" />
+      <style>
+        body{font-family:'Segoe UI',Arial,sans-serif;color:#111;}
+        .rpt-header{text-align:center;border-bottom:2px solid #15803d;padding-bottom:8px;margin-bottom:12px;}
+        .rpt-name{font-size:20px;font-weight:bold;color:#15803d;}
+        .rpt-addr{font-size:11px;color:#555;}
+        .rpt-title{font-size:14px;font-weight:bold;margin-top:6px;}
+        table{border-collapse:collapse;width:100%;font-size:11px;}
+        .rpt-footer{margin-top:16px;border-top:1px solid #cbd5e1;padding-top:6px;font-size:10px;color:#777;text-align:center;}
+      </style></head><body>
+      <div class="rpt-header">
+        <div class="rpt-name">${escapeHtml(resort.name)}</div>
+        <div class="rpt-addr">${escapeHtml(resort.address)}${resort.phone ? ' | Tel: ' + escapeHtml(resort.phone) : ''}${resort.email ? ' | ' + escapeHtml(resort.email) : ''}</div>
+        <div class="rpt-title">${escapeHtml(title)} — ${escapeHtml(fromDate)} to ${escapeHtml(toDate)}</div>
+      </div>
+      <table><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>
+      <div class="rpt-footer">Generated on ${escapeHtml(generated)} &bull; ${escapeHtml(resort.name)} &bull; This is a system-generated report.</div>
+      </body></html>`;
+
+    res.setHeader('Content-Type', 'application/msword');
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}.doc"`);
+    return res.send(html);
+  }
+
+  // ── CSV (default) with a small branded preamble ─────────────────────────────
+  const csvLines = [];
+  csvLines.push(`"${resort.name}"`);
+  if (resort.address) csvLines.push(`"${resort.address.replace(/"/g,'""')}"`);
+  csvLines.push(`"${title} - ${fromDate} to ${toDate}"`);
+  csvLines.push('');
+  csvLines.push(prettyHeaders.map(h => `"${h}"`).join(','));
+  for (const row of rows) {
+    csvLines.push(headers.map(h => `"${String(row[h] ?? '').replace(/"/g, '""')}"`).join(','));
+  }
+  res.setHeader('Content-Type', 'text/csv');
+  res.setHeader('Content-Disposition', `attachment; filename="${filename}.csv"`);
+  res.send(csvLines.join('\n'));
+});
+
+module.exports = router;

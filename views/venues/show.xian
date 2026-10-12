@@ -1,0 +1,48 @@
+<% layout('layouts/main') %>
+<div class="page-header">
+  <div><nav aria-label="breadcrumb"><ol class="breadcrumb mb-1"><li class="breadcrumb-item"><a href="/venues">Venues</a></li><li class="breadcrumb-item active"><%= venue.name %></li></ol></nav><h3 class="mb-0"><%= venue.name %></h3></div>
+  <div class="page-header-actions">
+    <%- statusBadge(venue.status) %>
+    <% if (currentUser && (currentUser.role === 'admin' || currentUser.role === 'staff')) { %>
+    <a href="/venues/<%= venue.id %>/edit" class="btn btn-sm btn-outline-secondary"><i class="fas fa-edit me-1"></i>Edit</a>
+    <% } %>
+  </div>
+</div>
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card">
+      <div class="card-body">
+        <table class="table table-sm table-borderless mb-0">
+          <tr><th>Type</th><td><%= venue.venue_type.replace(/_/g,' ') %></td></tr>
+          <tr><th>Capacity</th><td><%= venue.capacity %> guests</td></tr>
+          <tr><th>Location</th><td><%= venue.location || '—' %></td></tr>
+          <tr><th>Price</th><td class="fw-bold text-primary"><%= formatPeso(venue.price) %></td></tr>
+          <% if (venue.price_note) { %><tr><th>Note</th><td class="small text-muted"><%= venue.price_note %></td></tr><% } %>
+        </table>
+        <% if (venue.description) { %><p class="text-muted small mt-3"><%= venue.description %></p><% } %>
+        <% if (venue.amenitiesList && venue.amenitiesList.length > 0) { %>
+        <div class="mt-2"><strong class="small">Amenities:</strong><div class="mt-1"><% for (const a of venue.amenitiesList) { %><span class="badge bg-light text-dark me-1 mb-1"><i class="fas fa-check text-success me-1"></i><%= a %></span><% } %></div></div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-history me-2"></i>Booking History</h6></div>
+      <div class="card-body p-0">
+        <table class="table table-hover mb-0">
+          <thead><tr><th>Booking Ref</th><th>Customer</th><th>Date</th><th>Status</th></tr></thead>
+          <tbody>
+            <% if (!reservations || reservations.length === 0) { %>
+            <tr><td colspan="4" class="text-center py-4 text-muted">No bookings for this venue.</td></tr>
+            <% } else { %>
+              <% for (const r of reservations) { %>
+              <tr><td><a href="/reservations/<%= r.id %>"><code class="small"><%= r.booking_ref %></code></a></td><td><%= r.customer_name %></td><td class="small"><%= formatDate(r.event_date || r.check_in_date) %></td><td><%- statusBadge(r.status) %></td></tr>
+              <% } %>
+            <% } %>
+          </tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+</div>

@@ -1,0 +1,582 @@
+<% layout('layouts/portal') %>
+
+<div class="container-lg px-4 py-4">
+  <div class="mb-4">
+    <a href="/portal/my-reservations" class="portal-back-btn">
+      <i class="fas fa-arrow-left"></i>Back to My Bookings
+    </a>
+    <h4 class="fw-bold mt-2 mb-0">
+      Booking <span style="font-family:monospace;color:#4f46e5;"><%= reservation.booking_ref %></span>
+    </h4>
+  </div>
+
+  <div class="row g-4">
+
+    <%# ── LEFT COLUMN ─────────────────────────────────────────── %>
+    <div class="col-lg-7">
+
+      <%# Reservation Details %>
+      <div class="bg-white rounded-3 border p-4 mb-3">
+        <div class="d-flex justify-content-between align-items-start mb-3">
+          <h6 class="fw-bold mb-0">Reservation Details</h6>
+          <div class="d-flex gap-2 flex-wrap">
+            <%- statusBadge(reservation.status) %>
+            <%- statusBadge(reservation.payment_status) %>
+          </div>
+        </div>
+        <table class="table table-sm table-borderless mb-0">
+          <tr><th width="42%">Booking Reference</th><td><code><%= reservation.booking_ref %></code></td></tr>
+          <tr><th>Type</th><td><span class="badge bg-light text-dark"><%= reservation.reservation_type %></span></td></tr>
+          <% if (reservation.check_in_date) { %>
+          <tr><th>Check-in</th><td><%= formatDate(reservation.check_in_date) %></td></tr>
+          <tr><th>Check-out</th><td><%= formatDate(reservation.check_out_date) %></td></tr>
+          <% } %>
+          <% if (reservation.event_date) { %>
+          <tr><th>Event Date</th><td><%= formatDate(reservation.event_date) %></td></tr>
+          <% if (reservation.start_time) { %><tr><th>Time</th><td><%= reservation.start_time %> – <%= reservation.end_time %></td></tr><% } %>
+          <% } %>
+          <tr><th>Number of Guests</th><td><%= reservation.num_guests %></td></tr>
+          <tr><th>Total Amount</th><td class="fw-bold text-primary fs-6"><%= formatPeso(totalAmount) %></td></tr>
+          <tr><th>Downpayment Required</th><td class="fw-bold" style="color:#d97706;"><%= formatPeso(reservation.downpayment_req) %></td></tr>
+          <tr><th>Amount Paid</th>
+            <td class="fw-bold <%= hasAnyPayment ? 'text-success' : 'text-muted' %>">
+              <%= hasAnyPayment ? formatPeso(amountPaid) : '—' %>
+            </td>
+          </tr>
+          <tr><th>Balance Due</th>
+            <td class="fw-bold">
+              <%# FIX 3: Only show Fully Paid when totalAmount > 0 AND actual payment was made %>
+              <% if (isFullyPaid && hasAnyPayment) { %>
+                <span class="text-success"><i class="fas fa-check-circle me-1"></i>Fully Paid</span>
+              <% } else if (balance > 0) { %>
+                <span class="text-danger"><%= formatPeso(balance) %></span>
+              <% } else if (totalAmount <= 0) { %>
+                <span class="text-muted">—</span>
+              <% } else { %>
+                <span class="text-success"><i class="fas fa-check-circle me-1"></i>Fully Paid</span>
+              <% } %>
+            </td>
+          </tr>
+        </table>
+        <% if (reservation.special_requests) { %>
+        <div class="alert alert-info mt-3 py-2 small mb-0">
+          <i class="fas fa-sticky-note me-1"></i><strong>Your Request:</strong> <%= reservation.special_requests %>
+        </div>
+        <% } %>
+      </div>
+
+      <%# Booked Items %>
+      <% if (items && items.length > 0) { %>
+      <div class="bg-white rounded-3 border p-4 mb-3">
+        <h6 class="fw-bold mb-3"><i class="fas fa-list me-2 text-primary"></i>Booked Items</h6>
+        <% for (const item of items) { %>
+        <div class="d-flex justify-content-between align-items-center py-2 border-bottom">
+          <div>
+            <div class="fw-medium small"><%= item.item_name || item.item_type %></div>
+            <div class="text-muted" style="font-size:.72rem;"><%= item.item_type.replace(/_/g,' ') %> &times; <%= item.quantity %></div>
+          </div>
+          <div class="fw-bold text-primary"><%= formatPeso(item.total_price) %></div>
+        </div>
+        <% } %>
+        <div class="d-flex justify-content-between pt-2 fw-bold">
+          <span>Total</span>
+          <span class="text-primary"><%= formatPeso(totalAmount) %></span>
+        </div>
+      </div>
+      <% } %>
+
+      <%# Payment History %>
+      <div class="bg-white rounded-3 border p-4">
+        <h6 class="fw-bold mb-3"><i class="fas fa-money-bill-wave me-2 text-success"></i>Payment History</h6>
+
+        <% if (!payments || payments.length === 0) { %>
+        <div class="text-center py-3">
+          <i class="fas fa-receipt text-muted mb-2 d-block" style="font-size:2rem;opacity:.3;"></i>
+          <div class="text-muted small">No payments recorded yet.</div>
+          <% if (reservation.status === 'awaiting_payment') { %>
+          <div class="text-muted small mt-1">Please complete your downpayment using the instructions on the right.</div>
+          <% } %>
+        </div>
+        <% } else { %>
+          <% for (const p of payments) { %>
+          <div class="d-flex justify-content-between align-items-start py-2 border-bottom">
+            <div>
+              <div class="d-flex align-items-center gap-2 mb-1">
+                <span class="fw-medium small"><%= p.payment_type.replace(/_/g,' ').replace(/\b\w/g, l => l.toUpperCase()) %></span>
+                <% if (p.status === 'received') { %>
+                  <span class="badge bg-warning text-dark" style="font-size:.65rem;"><i class="fas fa-clock me-1"></i>Pending</span>
+                <% } else if (p.status === 'verified') { %>
+                  <span class="badge bg-success" style="font-size:.65rem;"><i class="fas fa-check me-1"></i>Verified</span>
+                <% } %>
+              </div>
+              <div class="text-muted" style="font-size:.75rem;">
+                <%= p.payment_method.replace(/_/g,' ') %> &middot; <%= formatDate(p.payment_date) %>
+              </div>
+              <% if (p.reference_number && !p.reference_number.startsWith('CUST-PROOF-')) { %>
+              <div class="text-muted" style="font-size:.7rem;">Ref: <code><%= p.reference_number %></code></div>
+              <% } %>
+            </div>
+            <div class="text-end">
+              <div class="fw-bold text-success"><%= formatPeso(p.amount) %></div>
+              <% if (p.proof_image) { %>
+              <a href="/portal/payment-proof/<%= p.id %>"
+                 data-lightbox="/portal/payment-proof/<%= p.id %>"
+                 data-lightbox-title="Your Payment Proof"
+                 class="small text-primary" style="cursor:zoom-in;">
+                <i class="fas fa-image me-1"></i>View Proof
+              </a>
+              <% } %>
+            </div>
+          </div>
+          <% } %>
+
+          <div class="d-flex justify-content-between pt-2 fw-bold">
+            <span>Total Submitted</span>
+            <span class="text-success"><%= formatPeso(amountPaid) %></span>
+          </div>
+        <% } %>
+      </div>
+
+    </div>
+
+    <%# ── RIGHT COLUMN ────────────────────────────────────────── %>
+    <div class="col-lg-5">
+
+      <%# Status Banner %>
+      <div class="rounded-3 p-4 mb-3 text-center text-white
+        <%= reservation.status === 'confirmed' || reservation.status === 'checked_in' ? 'bg-success' :
+            reservation.status === 'completed' ? 'bg-secondary' :
+            reservation.status === 'cancelled' || reservation.status === 'rejected' ? 'bg-danger' :
+            'bg-warning' %>">
+        <div style="font-size:2rem;">
+          <% if (reservation.status === 'confirmed' || reservation.status === 'checked_in') { %>
+            <i class="fas fa-check-circle"></i>
+          <% } else if (reservation.status === 'awaiting_payment') { %>
+            <i class="fas fa-clock"></i>
+          <% } else if (reservation.status === 'completed') { %>
+            <i class="fas fa-star"></i>
+          <% } else if (reservation.status === 'cancelled' || reservation.status === 'rejected') { %>
+            <i class="fas fa-times-circle"></i>
+          <% } else { %>
+            <i class="fas fa-hourglass-half"></i>
+          <% } %>
+        </div>
+        <div class="fw-bold mt-2 text-capitalize fs-6"><%= reservation.status.replace(/_/g,' ') %></div>
+        <div class="small mt-1" style="opacity:.9;">
+          <% if (reservation.status === 'awaiting_payment') { %>
+            Pay the downpayment of <strong><%= formatPeso(reservation.downpayment_req) %></strong> to confirm your booking.
+          <% } else if (reservation.status === 'pending') { %>
+            Your booking is under review. We'll notify you shortly.
+          <% } else if (reservation.status === 'confirmed') { %>
+            Your booking is confirmed. See you soon!
+          <% } else if (reservation.status === 'checked_in') { %>
+            You are currently checked in. Enjoy your stay!
+          <% } else if (reservation.status === 'completed') { %>
+            Thank you for staying with us!
+          <% } else if (reservation.status === 'cancelled') { %>
+            This booking was cancelled.
+          <% } %>
+        </div>
+      </div>
+
+      <%# Pending proof notice %>
+      <% if (pendingProof) { %>
+      <div class="bg-white rounded-3 border border-warning p-3 mb-3">
+        <div class="d-flex gap-3 align-items-start">
+          <i class="fas fa-hourglass-half text-warning fa-lg mt-1"></i>
+          <div>
+            <div class="fw-bold small text-warning">Payment Under Review</div>
+            <div class="small text-muted mt-1">
+              Your payment of <strong><%= formatPeso(pendingProof.amount) %></strong>
+              via <strong><%= pendingProof.payment_method.replace(/_/g,' ') %></strong>
+              was received on <%= formatDate(pendingProof.payment_date) %>.
+            </div>
+            <div class="small text-muted mt-1">Our team will verify and confirm your booking within 24 hours.</div>
+            <% if (pendingProof.proof_image) { %>
+            <a href="/portal/payment-proof/<%= pendingProof.id %>"
+               data-lightbox="/portal/payment-proof/<%= pendingProof.id %>"
+               data-lightbox-title="Your Submitted Payment Proof"
+               class="btn btn-xs btn-outline-primary mt-2" style="cursor:zoom-in;">
+              <i class="fas fa-image me-1"></i>View Submitted Proof
+            </a>
+            <% } %>
+          </div>
+        </div>
+      </div>
+      <% } %>
+
+      <%# ── FIX 4: Payment instructions panel — shown for awaiting_payment %>
+      <%# regardless of balance, as long as reservation isn't already verified %>
+      <% if ((reservation.status === 'awaiting_payment' || reservation.status === 'pending') && !pendingProof) { %>
+      <div class="bg-white rounded-3 border p-4 mb-3">
+        <h6 class="fw-bold mb-3">
+          <i class="fas fa-money-bill-wave me-2 text-warning"></i>Pay Your Downpayment
+        </h6>
+        <div class="alert alert-warning py-2 small mb-3">
+          <i class="fas fa-exclamation-triangle me-1"></i>
+          Pay <strong><%= formatPeso(reservation.downpayment_req > 0 ? reservation.downpayment_req : Math.ceil((totalAmount || 0) * 0.5)) %></strong>
+          within <strong>48 hours</strong> to secure your booking.
+          Use <strong><%= reservation.booking_ref %></strong> as your reference.
+        </div>
+
+        <%# Payment account details — show only the method the customer chose %>
+        <%
+          const chosenMethod = reservation.payment_method || 'gcash';
+          const showGcash    = chosenMethod === 'gcash';
+          const showMaya     = chosenMethod === 'maya';
+          const showBank     = chosenMethod === 'bank_transfer';
+          const showCash     = chosenMethod === 'cash';
+        %>
+        <div class="d-flex flex-column gap-2 mb-3">
+
+          <% if (showGcash) { %>
+          <div class="p-3 rounded-3 border" style="background:#f0fdf4;">
+            <div class="small fw-bold mb-2"><i class="fas fa-mobile-alt me-1" style="color:#16a34a;"></i>GCash</div>
+            <div class="small text-muted mb-1">Number: <strong class="text-dark fs-6"><a href="tel:<%= (paymentInfo.gcash_number||'').replace(/[^0-9]/g,'') %>" style="color:inherit;"><%= paymentInfo.gcash_number || '—' %></a></strong></div>
+            <div class="small text-muted">Name: <strong class="text-dark"><%= paymentInfo.gcash_name || 'Balai Miciano Resort' %></strong></div>
+            <% if (paymentInfo.gcash_qr_path) { %>
+            <div class="mt-3 text-center">
+              <img src="<%= paymentInfo.gcash_qr_path %>" alt="GCash QR Code"
+                style="max-width:200px;width:100%;border:3px solid #16a34a;border-radius:.5rem;padding:4px;background:#fff;"
+                onerror="this.style.display='none'" />
+              <div class="text-muted mt-1" style="font-size:.72rem;"><i class="fas fa-qrcode me-1"></i>Scan with GCash app to pay directly</div>
+            </div>
+            <% } %>
+          </div>
+          <% } %>
+
+          <% if (showBank) { %>
+          <div class="p-3 rounded-3 border" style="background:#eff6ff;">
+            <div class="small fw-bold mb-2"><i class="fas fa-university me-1" style="color:#2563eb;"></i>Bank Transfer</div>
+            <div class="small text-muted mb-1">BDO: <strong class="text-dark"><%= paymentInfo.bank_bdo || '—' %></strong></div>
+            <div class="small text-muted mb-1">BPI: <strong class="text-dark"><%= paymentInfo.bank_bpi || '—' %></strong></div>
+            <div class="small text-muted">Account Name: <strong class="text-dark"><%= paymentInfo.bank_name || 'Balai Miciano Resort' %></strong></div>
+          </div>
+          <% } %>
+
+          <% if (showMaya) { %>
+          <div class="p-3 rounded-3 border" style="background:#fdf4ff;">
+            <div class="small fw-bold mb-2"><i class="fas fa-wallet me-1" style="color:#9333ea;"></i>Maya (PayMaya)</div>
+            <div class="small text-muted mb-1">Number: <strong class="text-dark fs-6"><a href="tel:<%= (paymentInfo.maya_number||'').replace(/[^0-9]/g,'') %>" style="color:inherit;"><%= paymentInfo.maya_number || '—' %></a></strong></div>
+            <div class="small text-muted">Name: <strong class="text-dark"><%= paymentInfo.maya_name || 'Balai Miciano Resort' %></strong></div>
+            <% if (paymentInfo.maya_qr_path) { %>
+            <div class="mt-3 text-center">
+              <img src="<%= paymentInfo.maya_qr_path %>" alt="Maya QR Code"
+                style="max-width:200px;width:100%;border:3px solid #9333ea;border-radius:.5rem;padding:4px;background:#fff;"
+                onerror="this.style.display='none'" />
+              <div class="text-muted mt-1" style="font-size:.72rem;"><i class="fas fa-qrcode me-1"></i>Scan with Maya app to pay directly</div>
+            </div>
+            <% } %>
+          </div>
+          <% } %>
+
+          <% if (showCash) { %>
+          <div class="p-3 rounded-3 border" style="background:#fff7ed;">
+            <div class="small fw-bold mb-2"><i class="fas fa-store me-1" style="color:#ea580c;"></i>Cash (Walk-in)</div>
+            <div class="small text-muted">Please bring your booking reference <strong><%= reservation.booking_ref %></strong> and pay at our front desk.</div>
+          </div>
+          <% } %>
+
+        </div>
+
+        <%# ── FIX 4: Submit proof form — ALWAYS shown when awaiting_payment %>
+        <% const isGcash = (reservation.payment_method || 'gcash') === 'gcash'; %>
+        <div class="border-top pt-3">
+          <h6 class="small fw-bold mb-2">
+            <i class="fas fa-paper-plane me-1 text-primary"></i>Submit Payment Proof
+          </h6>
+          <p class="text-muted mb-2" style="font-size:.75rem;">
+            After paying, fill in the details and upload your screenshot/receipt so we can verify faster.
+          </p>
+
+          <%# GCash: show the required example screenshot + auto-verification notice %>
+          <% if (isGcash) { %>
+          <div class="alert alert-info py-2 px-3 mb-3" style="font-size:.74rem;">
+            <div class="fw-bold mb-1"><i class="fas fa-shield-alt me-1"></i>GCash screenshots are automatically verified</div>
+            You must upload the <strong>actual GCash payment receipt</strong>. Screenshots that are not
+            genuine GCash receipts will be rejected automatically. It should look like this example:
+            <div class="mt-2 text-center">
+              <a href="/images/gcash-sreenshot-sample.jpg" target="_blank" title="Click to view full size">
+                <img src="/images/gcash-sreenshot-sample.jpg" alt="Example GCash receipt"
+                  style="max-height:220px;width:auto;border:2px solid #16a34a;border-radius:.5rem;padding:2px;background:#fff;" />
+              </a>
+              <div class="text-muted mt-1" style="font-size:.68rem;">Example only — upload YOUR own receipt</div>
+            </div>
+          </div>
+          <% } %>
+
+          <form action="/portal/my-reservations/<%= reservation.id %>/submit-payment"
+                method="POST" enctype="multipart/form-data">
+
+            <div class="mb-2">
+              <label class="form-label" style="font-size:.8rem;">Payment Method Used <span class="text-danger">*</span></label>
+              <%
+                const pmLabels = {
+                  gcash: 'GCash',
+                  bank_transfer: 'Bank Transfer (BDO / BPI)',
+                  maya: 'Maya (PayMaya)',
+                  cash: 'Cash (Walk-in)'
+                };
+                const chosenPmLabel = pmLabels[reservation.payment_method] || reservation.payment_method || 'GCash';
+              %>
+              <%# Hidden input — locked to what the customer chose at booking time %>
+              <input type="hidden" name="payment_method" value="<%= reservation.payment_method || 'gcash' %>" />
+              <%# Read-only display %>
+              <div class="form-control form-control-sm bg-light d-flex align-items-center gap-2" style="cursor:default;">
+                <% if (reservation.payment_method === 'gcash') { %><i class="fas fa-mobile-alt" style="color:#16a34a;"></i>
+                <% } else if (reservation.payment_method === 'bank_transfer') { %><i class="fas fa-university" style="color:#2563eb;"></i>
+                <% } else if (reservation.payment_method === 'maya') { %><i class="fas fa-wallet" style="color:#9333ea;"></i>
+                <% } else { %><i class="fas fa-store" style="color:#ea580c;"></i><% } %>
+                <span class="fw-medium"><%= chosenPmLabel %></span>
+              </div>
+              <div class="form-text" style="font-size:.7rem;">This matches your chosen payment method at booking.</div>
+            </div>
+
+            <div class="mb-2">
+              <label class="form-label" style="font-size:.8rem;">Amount Sent (₱) <span class="text-danger">*</span></label>
+              <div class="input-group input-group-sm">
+                <span class="input-group-text">₱</span>
+                <input type="number" name="amount_sent" class="form-control"
+                  min="0.01" step="0.01"
+                  value="<%= reservation.downpayment_req > 0 ? reservation.downpayment_req : '' %>"
+                  required />
+              </div>
+            </div>
+
+            <div class="mb-2">
+              <label class="form-label" style="font-size:.8rem;">Reference / Transaction Number <span class="text-muted">(optional)</span></label>
+              <input type="text" name="reference_number" class="form-control form-control-sm"
+                placeholder="e.g. GCash ref #123456789" />
+            </div>
+
+            <%# FIX 4 / FIX 5: Proof image upload %>
+            <div class="mb-2">
+              <label class="form-label" style="font-size:.8rem;">
+                <i class="fas fa-image me-1 text-primary"></i>Upload <%= isGcash ? 'GCash' : '' %> Screenshot / Receipt
+                <% if (isGcash) { %><span class="text-danger">*</span><% } else { %><span class="text-muted">(recommended)</span><% } %>
+              </label>
+              <input type="file" name="proof_image" id="proofImageInput" class="form-control form-control-sm"
+                accept="<%= isGcash ? 'image/*' : 'image/*,.pdf' %>" <%= isGcash ? 'required' : '' %> />
+              <div class="form-text" style="font-size:.7rem;">
+                <% if (isGcash) { %>
+                  <i class="fas fa-exclamation-circle text-warning me-1"></i>Required. Must be a genuine GCash receipt (JPG/PNG). Verified automatically.
+                <% } else { %>
+                  JPG, PNG, PDF accepted. Max 10 MB. This helps us verify faster.
+                <% } %>
+              </div>
+              <%# Live preview of the selected file %>
+              <div id="proofPreviewWrap" class="mt-2" style="display:none;">
+                <img id="proofPreview" alt="Selected screenshot"
+                  style="max-height:160px;width:auto;border:1px solid #e2e8f0;border-radius:.375rem;" />
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label" style="font-size:.8rem;">Notes <span class="text-muted">(optional)</span></label>
+              <textarea name="notes" class="form-control form-control-sm" rows="2"
+                placeholder="Any additional details..."></textarea>
+            </div>
+
+            <button type="submit" class="btn btn-success btn-sm w-100" id="submitProofBtn">
+              <i class="fas fa-paper-plane me-1"></i>Submit Payment Proof
+            </button>
+          </form>
+
+          <script>
+          (function () {
+            var input   = document.getElementById('proofImageInput');
+            var wrap    = document.getElementById('proofPreviewWrap');
+            var preview = document.getElementById('proofPreview');
+            var form    = input ? input.closest('form') : null;
+            var btn     = document.getElementById('submitProofBtn');
+            var isGcash = <%= isGcash ? 'true' : 'false' %>;
+
+            if (input) {
+              input.addEventListener('change', function () {
+                var file = this.files && this.files[0];
+                if (!file || !file.type.startsWith('image/')) { if (wrap) wrap.style.display = 'none'; return; }
+                var reader = new FileReader();
+                reader.onload = function (e) { preview.src = e.target.result; wrap.style.display = ''; };
+                reader.readAsDataURL(file);
+              });
+            }
+
+            if (form && btn) {
+              form.addEventListener('submit', function () {
+                btn.disabled = true;
+                btn.innerHTML = isGcash
+                  ? '<span class="spinner-border spinner-border-sm me-2"></span>Verifying your GCash screenshot…'
+                  : '<span class="spinner-border spinner-border-sm me-2"></span>Submitting…';
+              });
+            }
+          })();
+          </script>
+        </div>
+      </div>
+      <% } %>
+
+      <%# QR Code (confirmed) %>
+      <% if (qrCode && (reservation.status === 'confirmed' || reservation.status === 'checked_in')) { %>
+      <div class="bg-white rounded-3 border p-4 mb-3 text-center">
+        <h6 class="fw-bold mb-3"><i class="fas fa-qrcode me-2 text-primary"></i>Check-in QR Code</h6>
+        <img src="<%= qrCode.qr_path %>" alt="QR Code"
+          style="max-width:200px;border:4px solid #4f46e5;border-radius:.5rem;padding:4px;" />
+        <p class="text-muted small mt-2 mb-2">Present at the front desk for fast check-in.</p>
+        <button class="btn btn-sm btn-outline-primary" onclick="window.print()">
+          <i class="fas fa-print me-1"></i>Print QR
+        </button>
+      </div>
+      <% } %>
+
+      <%# Feedback (completed) %>
+      <% if (reservation.status === 'completed' && !feedback) { %>
+      <div class="bg-white rounded-3 border p-4 mb-3 text-center">
+        <i class="fas fa-star fa-2x text-warning mb-2 d-block"></i>
+        <h6 class="fw-bold">How was your experience?</h6>
+        <p class="text-muted small">Your feedback helps us serve you better.</p>
+        <a href="/portal/feedback/<%= reservation.id %>" class="btn btn-warning w-100">
+          <i class="fas fa-star me-1"></i>Leave Feedback
+        </a>
+      </div>
+      <% } else if (feedback) { %>
+      <div class="bg-white rounded-3 border p-4 mb-3">
+        <h6 class="fw-bold mb-2"><i class="fas fa-star me-2 text-warning"></i>Your Feedback</h6>
+        <div class="mb-1">
+          <% for (let s=1;s<=5;s++) { %>
+          <i class="fas fa-star" style="color:<%= s<=feedback.rating?'#f59e0b':'#d1d5db' %>;"></i>
+          <% } %>
+          <span class="ms-1 small fw-bold"><%= feedback.rating %>/5</span>
+        </div>
+        <p class="text-muted small mb-0"><%= feedback.comments %></p>
+      </div>
+      <% } %>
+
+      <%# Actions %>
+      <div class="bg-white rounded-3 border p-3">
+        <a href="/portal/my-reservations" class="btn btn-outline-secondary w-100 mb-2">
+          <i class="fas fa-arrow-left me-1"></i>Back to My Bookings
+        </a>
+          <i class="fas fa-question-circle me-1"></i>Have a Question?
+        </a>
+
+        <%# Self-cancellation — only available while pending or awaiting payment %>
+        <% if (['pending','awaiting_payment'].includes(reservation.status)) { %>
+        <hr class="my-2" />
+        <% const hasPaidSomething = amountPaid > 0; %>
+        <% if (hasPaidSomething) { %>
+        <div class="alert alert-warning py-2 small mb-2">
+          <i class="fas fa-exclamation-triangle me-1"></i>
+          <strong>Non-refundable:</strong> You have already submitted ₱<%= amountPaid.toLocaleString('en-PH',{minimumFractionDigits:2}) %> in payment.
+          Cancelling will <strong>forfeit this amount</strong>.
+        </div>
+        <% } %>
+        <form action="/portal/my-reservations/<%= reservation.id %>/cancel" method="POST" id="cancelBookingForm">
+          <button type="submit" class="btn btn-outline-danger btn-sm w-100"
+            data-confirm="<%= hasPaidSomething ? 'Your payment is NON-REFUNDABLE and will not be returned. Do you still want to cancel this booking?' : 'Are you sure you want to cancel this booking? This cannot be undone.' %>"
+            data-confirm-title="Cancel Booking"
+            data-confirm-type="danger"
+            data-confirm-ok="Yes, Cancel Booking">
+            <i class="fas fa-times-circle me-1"></i>Cancel This Booking
+          </button>
+        </form>
+        <% } %>
+
+        <%# ── Refund Request ──────────────────────────────────────────── %>
+        <% if (refundRequest && refundRequest.status === 'pending') { %>
+        <hr class="my-2" />
+        <div class="alert alert-info py-2 small mb-0">
+          <i class="fas fa-hourglass-half me-1"></i>
+          <strong>Refund under review.</strong> You requested a refund of
+          ₱<%= (refundRequest.amount||0).toLocaleString('en-PH',{minimumFractionDigits:2}) %>.
+          Our team is reviewing it and will notify you of the decision.
+        </div>
+        <% } else if (refundRequest && refundRequest.status === 'approved') { %>
+        <hr class="my-2" />
+        <div class="alert alert-success py-2 small mb-0">
+          <i class="fas fa-check-circle me-1"></i>
+          <strong>Refund approved.</strong> A refund of
+          ₱<%= (refundRequest.amount||0).toLocaleString('en-PH',{minimumFractionDigits:2}) %> has been paid out
+          <% if (refundRequest.payout_method) { %>via <strong><%= refundRequest.payout_method.toUpperCase() %></strong><% } %>.
+          <% if (refundRequest.payout_ref) { %><br /><span class="text-muted">Transaction Ref: <code><%= refundRequest.payout_ref %></code><% if (refundRequest.payout_date) { %> &middot; <%= refundRequest.payout_date %><% } %></span><% } %>
+          <% if (refundRequest.admin_note) { %><br /><span class="text-muted">Note: <%= refundRequest.admin_note %></span><% } %>
+          <% if (refundRequest.payout_proof) { %>
+          <br /><a href="/payments/refunds/requests/<%= refundRequest.id %>/proof"
+             data-lightbox="/payments/refunds/requests/<%= refundRequest.id %>/proof"
+             data-lightbox-title="Refund Proof" class="fw-semibold" style="cursor:zoom-in;">
+            <i class="fas fa-receipt me-1"></i>View refund receipt
+          </a>
+          <% } %>
+        </div>
+        <% } else if (refundRequest && refundRequest.status === 'rejected') { %>
+        <hr class="my-2" />
+        <div class="alert alert-danger py-2 small mb-2">
+          <i class="fas fa-times-circle me-1"></i>
+          <strong>Previous refund request declined.</strong>
+          <% if (refundRequest.admin_note) { %><br /><span>Reason: <%= refundRequest.admin_note %></span><% } %>
+        </div>
+        <% } %>
+
+        <% if (canRequestRefund) { %>
+        <hr class="my-2" />
+        <button type="button" id="toggleRefundBtn" class="btn btn-outline-warning btn-sm w-100">
+          <i class="fas fa-hand-holding-usd me-1"></i>Request a Refund
+        </button>
+        <form action="/portal/my-reservations/<%= reservation.id %>/request-refund" method="POST" id="refundForm" class="d-none mt-2">
+          <label class="form-label small mb-1">Reason for refund</label>
+          <textarea name="reason" id="refundReason" class="form-control form-control-sm mb-2" rows="3"
+            placeholder="Tell us why you're requesting a refund..."></textarea>
+          <label class="form-label small mb-1">GCash Number to receive the refund <span class="text-muted">(optional)</span></label>
+          <input type="text" name="gcash_number" id="refundGcash" class="form-control form-control-sm mb-2"
+            pattern="^09\d{9}$" maxlength="11" placeholder="e.g. 09171234567"
+            title="11-digit GCash number starting with 09" />
+          <button type="button" id="submitRefundBtn" class="btn btn-warning btn-sm w-100">
+            <i class="fas fa-paper-plane me-1"></i>Submit Refund Request
+          </button>
+        </form>
+        <script>
+        (function () {
+          var toggle = document.getElementById('toggleRefundBtn');
+          var form   = document.getElementById('refundForm');
+          var submit = document.getElementById('submitRefundBtn');
+          if (!toggle || !form || !submit) return;
+
+          toggle.addEventListener('click', function () { form.classList.toggle('d-none'); });
+
+          submit.addEventListener('click', function () {
+            var reason = document.getElementById('refundReason');
+            var gcash  = document.getElementById('refundGcash');
+            if (!reason.value.trim()) {
+              if (window.appNotify) window.appNotify('Please provide a reason for your refund request.', 'warning');
+              else alert('Please provide a reason for your refund request.');
+              reason.focus();
+              return;
+            }
+            if (gcash.value.trim() && !/^09\d{9}$/.test(gcash.value.trim())) {
+              if (window.appNotify) window.appNotify('Please enter a valid GCash number (11 digits starting with 09).', 'warning');
+              else alert('Please enter a valid GCash number.');
+              gcash.focus();
+              return;
+            }
+            var doSubmit = function () {
+              submit.disabled = true;
+              submit.innerHTML = '<span class="spinner-border spinner-border-sm me-1"></span>Submitting…';
+              form.submit();
+            };
+            if (window.confirmModal) {
+              window.confirmModal({
+                title: 'Request Refund',
+                message: 'Submit a refund request of \u20b1<%= amountPaid.toLocaleString("en-PH",{minimumFractionDigits:2}) %>? Our team will review it before any refund is issued.',
+                okText: 'Submit Request',
+              }).then(function (ok) { if (ok) doSubmit(); });
+            } else if (confirm('Submit this refund request?')) {
+              doSubmit();
+            }
+          });
+        })();
+        </script>
+        <% } %>
+      </div>
+
+    </div>
+  </div>
+</div>

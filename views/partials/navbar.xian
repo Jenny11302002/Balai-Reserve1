@@ -1,0 +1,81 @@
+<header class="top-navbar">
+
+  <!-- Left: Hamburger + Page Title -->
+  <div class="navbar-left">
+    <button class="sidebar-toggle" id="sidebarToggle" aria-label="Toggle sidebar">
+      <i class="fas fa-bars"></i>
+    </button>
+    <h2 class="page-title d-none d-md-block"><%= title ? title.split('–')[0].trim() : 'Dashboard' %></h2>
+  </div>
+
+  <!-- Right: Actions -->
+  <div class="navbar-right">
+
+    <!-- Notification Bell -->
+    <div class="dropdown">
+      <button class="navbar-icon-btn" data-bs-toggle="dropdown" aria-expanded="false" id="notifDropdown">
+        <i class="fas fa-bell"></i>
+        <% if (unreadNotifCount > 0) { %>
+          <span class="notif-badge"><%= unreadNotifCount > 9 ? '9+' : unreadNotifCount %></span>
+        <% } %>
+      </button>
+      <div class="dropdown-menu dropdown-menu-end notif-dropdown" aria-labelledby="notifDropdown">
+        <div class="notif-header">
+          <span>Notifications</span>
+          <% if (unreadNotifCount > 0) { %>
+            <span class="notif-count"><%= unreadNotifCount %> new</span>
+          <% } %>
+        </div>
+        <div class="notif-list">
+          <% if (!recentNotifications || recentNotifications.length === 0) { %>
+            <div class="notif-empty">No notifications</div>
+          <% } else { %>
+            <% for (const n of recentNotifications) { %>
+              <a href="<%= n.link || '/notifications' %>" class="notif-item <%= n.is_read ? '' : 'unread' %>">
+                <div class="notif-icon notif-<%= n.type %>">
+                  <% if (n.type === 'reservation') { %><i class="fas fa-calendar-check"></i>
+                  <% } else if (n.type === 'payment') { %><i class="fas fa-money-bill-wave"></i>
+                  <% } else if (n.type === 'inventory') { %><i class="fas fa-exclamation-triangle"></i>
+                  <% } else if (n.type === 'inquiry') { %><i class="fas fa-question-circle"></i>
+                  <% } else { %><i class="fas fa-bell"></i><% } %>
+                </div>
+                <div class="notif-text">
+                  <div class="notif-title"><%= n.title %></div>
+                  <div class="notif-msg"><%= n.message %></div>
+                  <div class="notif-time"><%= formatDate(n.created_at) %></div>
+                </div>
+              </a>
+            <% } %>
+          <% } %>
+        </div>
+        <div class="notif-footer">
+          <a href="/notifications">View all notifications</a>
+        </div>
+      </div>
+    </div>
+
+    <!-- User Menu -->
+    <% if (currentUser) { %>
+    <div class="dropdown">
+      <button class="navbar-user-btn" data-bs-toggle="dropdown" aria-expanded="false">
+        <div class="user-avatar-sm">
+          <% if (currentUser.avatar) { %>
+            <img src="<%= currentUser.avatar %>" alt="Avatar" />
+          <% } else { %>
+            <span><%= currentUser.firstName.charAt(0) %><%= currentUser.lastName.charAt(0) %></span>
+          <% } %>
+        </div>
+        <span class="d-none d-sm-inline"><%= currentUser.firstName %></span>
+        <i class="fas fa-chevron-down ms-1 small"></i>
+      </button>
+      <ul class="dropdown-menu dropdown-menu-end">
+        <li><h6 class="dropdown-header"><%= currentUser.firstName %> <%= currentUser.lastName %></h6></li>
+        <li><span class="dropdown-item-text text-muted small"><%= currentUser.roleLabel %></span></li>
+        <li><hr class="dropdown-divider"></li>
+        <li><a class="dropdown-item" href="/auth/logout"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+      </ul>
+    </div>
+    <% } %>
+
+  </div>
+</header>

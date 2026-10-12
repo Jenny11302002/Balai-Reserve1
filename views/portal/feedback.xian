@@ -1,0 +1,60 @@
+<% layout('layouts/portal') %>
+<div class="container-lg px-4 py-5">
+  <div class="row justify-content-center">
+    <div class="col-lg-6">
+      <div class="bg-white rounded-3 border shadow-sm p-4">
+        <h4 class="fw-bold mb-1 text-center"><i class="fas fa-star me-2 text-warning"></i>Leave Feedback</h4>
+        <p class="text-muted text-center small mb-4">How was your experience? Booking <code><%= reservation.booking_ref %></code></p>
+
+        <% if (errors && errors.length > 0) { %>
+        <div class="alert alert-danger"><% for(const e of errors){%><div><%= e.msg %></div><%}%></div>
+        <% } %>
+
+        <form action="/portal/feedback/<%= reservation.id %>" method="POST">
+          <div class="mb-4 text-center">
+            <label class="form-label fw-bold required d-block">Overall Rating</label>
+            <div class="star-rating d-flex flex-row-reverse justify-content-center">
+              <% for (let s=5;s>=1;s--) { %>
+              <input type="radio" name="rating" id="star<%= s %>" value="<%= s %>" <%= String(old.rating)===String(s)?'checked':'' %> required />
+              <label for="star<%= s %>"><i class="fas fa-star"></i></label>
+              <% } %>
+            </div>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label required">Category</label>
+            <select name="category" class="form-select">
+              <% for (const [v,l] of [['overall','Overall Experience'],['room','Room & Accommodation'],['service','Staff & Service'],['venue','Venue & Facilities'],['event','Event Management']]) { %>
+              <option value="<%= v %>" <%= (old.category||'overall')===v?'selected':'' %>><%= l %></option>
+              <% } %>
+            </select>
+          </div>
+
+          <div class="mb-3">
+            <label class="form-label required">Your Comments</label>
+            <textarea name="comments" class="form-control" rows="4" placeholder="Tell us about your experience…" required><%= old.comments||'' %></textarea>
+          </div>
+
+          <div class="mb-4">
+            <label class="form-label">Suggestions for Improvement <span class="text-muted small">(optional)</span></label>
+            <textarea name="suggestions" class="form-control" rows="2" placeholder="What could we do better?"><%= old.suggestions||'' %></textarea>
+          </div>
+
+          <div class="d-flex gap-3">
+            <button type="submit" class="btn btn-warning flex-fill"><i class="fas fa-paper-plane me-2"></i>Submit Feedback</button>
+            <a href="/portal/my-reservations/<%= reservation.id %>" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+/* Star rating RTL trick */
+.star-rating { direction: rtl; }
+.star-rating label { font-size: 2rem; color: #d1d5db; cursor: pointer; margin: 0 .1rem; transition: color .15s; }
+.star-rating input:checked ~ label,
+.star-rating label:hover,
+.star-rating label:hover ~ label { color: #f59e0b; }
+</style>

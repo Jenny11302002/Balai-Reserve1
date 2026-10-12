@@ -1,0 +1,77 @@
+<% layout('layouts/portal') %>
+
+<div class="container-lg px-4 py-4">
+  <div class="d-flex justify-content-between align-items-center mb-4 flex-wrap gap-2">
+    <div>
+      <h4 class="fw-bold mb-1"><i class="fas fa-bell me-2 text-primary"></i>Notifications</h4>
+      <p class="text-muted mb-0" style="font-size:.85rem;">Updates on your bookings and payments</p>
+    </div>
+    <% if (notifications && notifications.length > 0) { %>
+    <form action="/portal/notifications/clear" method="POST">
+      <button type="submit" class="btn btn-sm btn-outline-secondary"
+        data-confirm="Clear all read notifications? This cannot be undone."
+        data-confirm-title="Clear Notifications"
+        data-confirm-ok="Clear">
+        <i class="fas fa-trash me-1"></i>Clear read
+      </button>
+    </form>
+    <% } %>
+  </div>
+
+  <% if (!notifications || notifications.length === 0) { %>
+    <div class="text-center py-5 bg-white rounded-3 border">
+      <i class="fas fa-bell-slash fa-3x text-muted mb-3 d-block" style="opacity:.3;"></i>
+      <h5 class="text-muted">No notifications yet</h5>
+      <p class="text-muted small mb-3">You'll see booking and payment updates here.</p>
+      <a href="/portal/book" class="btn btn-primary btn-sm"><i class="fas fa-calendar-plus me-1"></i>Book Now</a>
+    </div>
+  <% } else { %>
+    <div class="bg-white rounded-3 border overflow-hidden">
+      <% for (const n of notifications) { %>
+      <a href="<%= n.link || '#' %>"
+        class="d-flex gap-3 p-3 border-bottom text-decoration-none notif-row <%= n.is_read ? '' : 'notif-row-unread' %>">
+        <div class="notif-row-icon
+          <%= n.type === 'payment' ? 'ic-payment' : n.type === 'reservation' ? 'ic-reservation' : n.type === 'inquiry' ? 'ic-inquiry' : 'ic-system' %>">
+          <% if (n.type === 'payment') { %><i class="fas fa-money-bill-wave"></i>
+          <% } else if (n.type === 'reservation') { %><i class="fas fa-calendar-check"></i>
+          <% } else if (n.type === 'inquiry') { %><i class="fas fa-question-circle"></i>
+          <% } else { %><i class="fas fa-bell"></i><% } %>
+        </div>
+        <div class="flex-grow-1 min-w-0">
+          <div class="d-flex align-items-center gap-2">
+            <span class="fw-bold" style="color:#0f172a;font-size:.9rem;"><%= n.title %></span>
+            <% if (!n.is_read) { %><span class="badge bg-primary" style="font-size:.6rem;">New</span><% } %>
+          </div>
+          <div class="text-muted" style="font-size:.82rem;line-height:1.5;"><%= n.message %></div>
+          <div class="text-muted" style="font-size:.72rem;margin-top:2px;"><%= formatDateTime(n.created_at) %></div>
+        </div>
+        <% if (n.link) { %><i class="fas fa-chevron-right text-muted align-self-center small"></i><% } %>
+      </a>
+      <% } %>
+    </div>
+  <% } %>
+
+  <div class="text-center mt-3">
+    <a href="/portal/my-reservations" class="portal-back-btn">
+      <i class="fas fa-arrow-left"></i>Back to My Bookings
+    </a>
+  </div>
+</div>
+
+<style>
+.notif-row { transition: background .15s; color: inherit; }
+.notif-row:hover { background: #f8fafc; color: inherit; }
+.notif-row:last-child { border-bottom: 0 !important; }
+.notif-row-unread { background: #eff6ff; }
+.notif-row-unread:hover { background: #dbeafe; }
+.notif-row-icon {
+  width: 42px; height: 42px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .95rem; flex-shrink: 0;
+}
+.notif-row-icon.ic-payment     { background: #dcfce7; color: #16a34a; }
+.notif-row-icon.ic-reservation { background: #eef2ff; color: #4f46e5; }
+.notif-row-icon.ic-inquiry     { background: #dbeafe; color: #2563eb; }
+.notif-row-icon.ic-system      { background: #f1f5f9; color: #64748b; }
+.min-w-0 { min-width: 0; }
+</style>

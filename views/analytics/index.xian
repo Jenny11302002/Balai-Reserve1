@@ -1,0 +1,124 @@
+<% layout('layouts/main') %>
+<div class="page-header">
+  <div><h3 class="mb-1">Analytics & AI Insights</h3><p class="text-muted mb-0">Business intelligence and AI-assisted decision support</p></div>
+</div>
+
+<!-- KPI Row -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-primary"><div class="stat-icon"><i class="fas fa-percent"></i></div><div class="stat-body">
+      <div class="stat-value"><%= occupancyRate %>%</div><div class="stat-label">Room Occupancy Rate</div>
+      <div class="stat-sub">Current occupancy</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-<%= cancellationRate > 20 ? 'danger' : 'success' %>"><div class="stat-icon"><i class="fas fa-times-circle"></i></div><div class="stat-body">
+      <div class="stat-value"><%= cancellationRate %>%</div><div class="stat-label">Cancellation Rate</div>
+      <div class="stat-sub">Last 3 months</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-<%= revChange === null ? 'secondary' : revChange >= 0 ? 'success' : 'danger' %>"><div class="stat-icon"><i class="fas fa-chart-line"></i></div><div class="stat-body">
+      <div class="stat-value"><%= revChange === null ? '—' : (revChange >= 0 ? '+' : '') + revChange + '%' %></div><div class="stat-label">Revenue Change</div>
+      <div class="stat-sub">vs. last month</div>
+    </div></div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-info"><div class="stat-icon"><i class="fas fa-eye"></i></div><div class="stat-body">
+      <div class="stat-value">~<%= projectedRes %></div><div class="stat-label">Projected Reservations</div>
+      <div class="stat-sub">Next month forecast</div>
+    </div></div>
+  </div>
+</div>
+
+<!-- Charts Row 1 -->
+<div class="row g-3 mb-4">
+  <div class="col-lg-8">
+    <div class="card"><div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-chart-line me-2 text-primary"></i>Revenue Trend (12 Months)</h6></div>
+    <div class="card-body"><canvas id="revTrend" height="100"></canvas></div></div>
+  </div>
+  <div class="col-lg-4">
+    <div class="card"><div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-chart-bar me-2 text-success"></i>Event Type Demand</h6></div>
+    <div class="card-body"><canvas id="eventDemandChart" height="180"></canvas></div></div>
+  </div>
+</div>
+
+<!-- Charts Row 2 -->
+<div class="row g-3 mb-4">
+  <div class="col-lg-6">
+    <div class="card"><div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-building me-2 text-warning"></i>Venue Utilization</h6></div>
+    <div class="card-body"><canvas id="venueChart" height="180"></canvas></div></div>
+  </div>
+  <div class="col-lg-6">
+    <div class="card"><div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-star me-2 text-warning"></i>Customer Satisfaction Trend</h6></div>
+    <div class="card-body"><canvas id="satChart" height="180"></canvas></div></div>
+  </div>
+</div>
+
+<!-- Peak Booking Days + AI Insights -->
+<div class="row g-3">
+  <div class="col-lg-4">
+    <div class="card"><div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-calendar-week me-2"></i>Peak Booking Days</h6></div>
+    <div class="card-body"><canvas id="peakChart" height="180"></canvas></div></div>
+  </div>
+  <div class="col-lg-8">
+    <div class="card"><div class="card-header d-flex justify-content-between align-items-center"><h6 class="card-title mb-0"><i class="fas fa-robot me-2 text-primary"></i>AI Recommendations</h6></div>
+    <div class="card-body">
+      <div class="alert alert-info py-2 small mb-3"><i class="fas fa-info-circle me-1"></i>AI recommendations are based on historical data and patterns. They are suggestions to support — not replace — management decisions.</div>
+      <% if (!insights || insights.length === 0) { %>
+      <div class="empty-state"><i class="fas fa-robot"></i><p>No insights available yet. Insights are generated as more data is collected.</p></div>
+      <% } else { %>
+        <% for (const ins of insights) { %>
+        <div class="insight-card insight-<%= ins.insight_type %> mb-3">
+          <div class="d-flex justify-content-between align-items-start">
+            <div class="insight-icon">
+              <% if (ins.insight_type === 'trend') { %><i class="fas fa-chart-line"></i>
+              <% } else if (ins.insight_type === 'recommendation') { %><i class="fas fa-lightbulb"></i>
+              <% } else if (ins.insight_type === 'forecast') { %><i class="fas fa-eye"></i>
+              <% } else { %><i class="fas fa-bell"></i><% } %>
+            </div>
+            <form action="/analytics/dismiss/<%= ins.id %>" method="POST" class="ms-auto"><button type="submit" class="btn btn-xs btn-outline-secondary" title="Dismiss">×</button></form>
+          </div>
+          <div class="insight-title mt-1"><%= ins.title %></div>
+          <div class="insight-msg"><%= ins.message %></div>
+          <div class="mt-2">
+            <span class="badge bg-light text-dark small"><%= ins.insight_type %></span>
+            <span class="badge <%= ins.confidence === 'high' ? 'bg-success' : ins.confidence === 'medium' ? 'bg-warning text-dark' : 'bg-secondary' %> small ms-1"><%= ins.confidence %> confidence</span>
+          </div>
+        </div>
+        <% } %>
+      <% } %>
+    </div></div>
+  </div>
+</div>
+
+<script>
+(function(){
+  const revTrend    = <%- revenueTrend || '[]' %>;
+  const resTrend    = <%- resTrend || '[]' %>;
+  const venueUtil   = <%- venueUtil || '[]' %>;
+  const eventDemand = <%- eventDemand || '[]' %>;
+  const satData     = <%- satisfactionJson || '[]' %>;
+  const peakDays    = <%- peakDaysJson || '[]' %>;
+
+  // Revenue Trend
+  const rc = document.getElementById('revTrend');
+  if (rc && revTrend.length) new Chart(rc, { type:'line', data:{ labels: revTrend.map(d=>d.month), datasets:[{ label:'Revenue (₱)', data: revTrend.map(d=>d.revenue), borderColor:'#4f46e5', backgroundColor:'rgba(79,70,229,0.08)', fill:true, tension:0.4 }]}, options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true, ticks:{callback:v=>'₱'+v.toLocaleString()} }}}});
+
+  // Event Demand
+  const ec = document.getElementById('eventDemandChart');
+  if (ec && eventDemand.length) new Chart(ec, { type:'bar', data:{ labels: eventDemand.map(d=>d.event_type), datasets:[{ label:'Events', data: eventDemand.map(d=>d.cnt), backgroundColor:'rgba(16,185,129,0.7)' }]}, options:{ responsive:true, indexAxis:'y', plugins:{legend:{display:false}}}});
+
+  // Venue Utilization
+  const vc = document.getElementById('venueChart');
+  if (vc && venueUtil.length) new Chart(vc, { type:'bar', data:{ labels: venueUtil.map(d=>d.name), datasets:[{ label:'Bookings', data: venueUtil.map(d=>d.bookings), backgroundColor:'rgba(245,158,11,0.7)' }]}, options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true, ticks:{stepSize:1}} }}});
+
+  // Satisfaction
+  const sc = document.getElementById('satChart');
+  if (sc && satData.length) new Chart(sc, { type:'line', data:{ labels: satData.map(d=>d.month), datasets:[{ label:'Avg Rating', data: satData.map(d=>d.avg_rating), borderColor:'#f59e0b', backgroundColor:'rgba(245,158,11,0.1)', fill:true, tension:0.4 }]}, options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ y:{min:0, max:5}}}});
+
+  // Peak Days
+  const pc = document.getElementById('peakChart');
+  if (pc && peakDays.length) new Chart(pc, { type:'bar', data:{ labels: peakDays.map(d=>d.day), datasets:[{ label:'Reservations', data: peakDays.map(d=>d.cnt), backgroundColor:'rgba(99,102,241,0.7)' }]}, options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ y:{beginAtZero:true, ticks:{stepSize:1}} }}});
+})();
+</script>

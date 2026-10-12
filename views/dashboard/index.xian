@@ -1,0 +1,373 @@
+<% layout('layouts/main') %>
+
+<!-- Page Header -->
+<div class="page-header">
+  <div>
+    <h3 class="mb-1">Dashboard</h3>
+    <p class="text-muted mb-0">Welcome back, <%= currentUser ? currentUser.firstName : 'User' %>! Here's what's happening today.</p>
+  </div>
+  <div class="page-header-actions">
+    <a href="/reservations/new" class="btn btn-primary btn-sm">
+      <i class="fas fa-plus me-1"></i> New Reservation
+    </a>
+  </div>
+</div>
+
+<!-- ── Stats Cards ─────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-primary">
+      <div class="stat-icon"><i class="fas fa-calendar-check"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.totalReservations %></div>
+        <div class="stat-label">Total Reservations</div>
+        <div class="stat-sub"><%= stats.todayReservations %> today</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-success">
+      <div class="stat-icon"><i class="fas fa-door-open"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.availableRooms %></div>
+        <div class="stat-label">Available Rooms</div>
+        <div class="stat-sub"><%= stats.occupiedRooms %> occupied / <%= stats.totalRooms %> total</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-warning">
+      <div class="stat-icon"><i class="fas fa-star"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.upcomingEvents %></div>
+        <div class="stat-label">Upcoming Events</div>
+        <div class="stat-sub"><%= stats.availableVenues %> venues available</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-info">
+      <div class="stat-icon"><i class="fas fa-money-bill-wave"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= formatPeso(stats.monthSales) %></div>
+        <div class="stat-label">This Month's Sales</div>
+        <div class="stat-sub">Total: <%= formatPeso(stats.totalSales) %></div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-secondary">
+      <div class="stat-icon"><i class="fas fa-users"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.totalGuests %></div>
+        <div class="stat-label">Total Customers</div>
+        <div class="stat-sub"><%= stats.upcomingRes %> upcoming check-ins</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-danger">
+      <div class="stat-icon"><i class="fas fa-clock"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.pendingPayments %></div>
+        <div class="stat-label">Pending Payments</div>
+        <div class="stat-sub"><%= stats.pendingInquiries %> open inquiries</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-orange">
+      <div class="stat-icon"><i class="fas fa-star-half-alt"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= stats.avgRating || '–' %> <i class="fas fa-star small"></i></div>
+        <div class="stat-label">Customer Rating</div>
+        <div class="stat-sub">Overall satisfaction</div>
+      </div>
+    </div>
+  </div>
+
+  <% if (invAlerts && invAlerts.length > 0) { %>
+  <div class="col-6 col-lg-3">
+    <a href="/inventory?alert=low" class="stat-card stat-dark text-decoration-none">
+      <div class="stat-icon"><i class="fas fa-exclamation-triangle"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= invAlerts.length %></div>
+        <div class="stat-label">Inventory Alerts</div>
+        <div class="stat-sub">Items below reorder level</div>
+      </div>
+    </a>
+  </div>
+  <% } %>
+
+</div>
+
+<!-- ── Charts Row ──────────────────────────────────────────────── -->
+<div class="row g-3 mb-4">
+
+  <!-- Revenue Chart -->
+  <div class="col-lg-8">
+    <div class="card h-100">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0"><i class="fas fa-chart-line me-2 text-primary"></i>Revenue Trend (Last 6 Months)</h6>
+      </div>
+      <div class="card-body">
+        <canvas id="revenueChart" height="100"></canvas>
+      </div>
+    </div>
+  </div>
+
+  <!-- Reservation Status Donut -->
+  <div class="col-lg-4">
+    <div class="card h-100">
+      <div class="card-header">
+        <h6 class="card-title mb-0"><i class="fas fa-chart-pie me-2 text-success"></i>Reservation Status</h6>
+      </div>
+      <div class="card-body d-flex align-items-center justify-content-center">
+        <canvas id="statusChart" height="180"></canvas>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Today's Check-ins + Upcoming Events ─────────────────────── -->
+<div class="row g-3 mb-4">
+
+  <!-- Today's Check-ins -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0"><i class="fas fa-sign-in-alt me-2 text-primary"></i>Today's Check-ins</h6>
+        <a href="/guests" class="btn btn-sm btn-outline-primary">View All</a>
+      </div>
+      <div class="card-body p-0">
+        <% if (!todayCheckIns || todayCheckIns.length === 0) { %>
+          <div class="empty-state py-4">
+            <i class="fas fa-calendar-times"></i>
+            <p>No check-ins scheduled for today</p>
+          </div>
+        <% } else { %>
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead><tr><th>Guest</th><th>Booking Ref</th><th>Status</th></tr></thead>
+              <tbody>
+                <% for (const r of todayCheckIns) { %>
+                <tr>
+                  <td><a href="/reservations/<%= r.id %>" class="fw-medium"><%= r.customer_name %></a></td>
+                  <td><code class="small"><%= r.booking_ref %></code></td>
+                  <td><%- statusBadge(r.status) %></td>
+                </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+  <!-- Upcoming Events -->
+  <div class="col-lg-6">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0"><i class="fas fa-star me-2 text-warning"></i>Upcoming Events (Next 7 Days)</h6>
+        <a href="/events" class="btn btn-sm btn-outline-warning">View All</a>
+      </div>
+      <div class="card-body p-0">
+        <% if (!upcomingEventsList || upcomingEventsList.length === 0) { %>
+          <div class="empty-state py-4">
+            <i class="fas fa-calendar-times"></i>
+            <p>No upcoming events in the next 7 days</p>
+          </div>
+        <% } else { %>
+          <div class="table-responsive">
+            <table class="table table-hover mb-0">
+              <thead><tr><th>Event</th><th>Date</th><th>Venue</th></tr></thead>
+              <tbody>
+                <% for (const e of upcomingEventsList) { %>
+                <tr>
+                  <td>
+                    <a href="/events/<%= e.id %>" class="fw-medium"><%= e.event_name %></a>
+                    <div class="small text-muted"><%= e.customer_name %></div>
+                  </td>
+                  <td class="small"><%= formatDate(e.event_date) %></td>
+                  <td class="small text-muted"><%= e.venue_name || '—' %></td>
+                </tr>
+                <% } %>
+              </tbody>
+            </table>
+          </div>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Recent Reservations + AI Insights ──────────────────────── -->
+<div class="row g-3">
+
+  <!-- Recent Reservations -->
+  <div class="col-lg-7">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0"><i class="fas fa-calendar-check me-2 text-primary"></i>Recent Reservations</h6>
+        <a href="/reservations" class="btn btn-sm btn-outline-primary">View All</a>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr><th>Booking Ref</th><th>Customer</th><th>Type</th><th>Amount</th><th>Status</th></tr>
+            </thead>
+            <tbody>
+              <% for (const r of recentReservations) { %>
+              <tr>
+                <td><a href="/reservations/<%= r.id %>"><code class="small"><%= r.booking_ref %></code></a></td>
+                <td><%= r.customer_name %></td>
+                <td><span class="badge bg-light text-dark"><%= r.reservation_type %></span></td>
+                <td class="fw-medium"><%= formatPeso(r.total_amount) %></td>
+                <td><%- statusBadge(r.status) %></td>
+              </tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- AI Insights -->
+  <div class="col-lg-5">
+    <div class="card">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h6 class="card-title mb-0"><i class="fas fa-robot me-2 text-purple"></i>AI Insights</h6>
+        <a href="/analytics" class="btn btn-sm btn-outline-secondary">Analytics</a>
+      </div>
+      <div class="card-body">
+        <% if (!insights || insights.length === 0) { %>
+          <div class="empty-state">
+            <i class="fas fa-chart-bar"></i>
+            <p>No insights available yet</p>
+          </div>
+        <% } else { %>
+          <% for (const insight of insights) { %>
+          <div class="insight-card insight-<%= insight.insight_type %>">
+            <div class="insight-icon">
+              <% if (insight.insight_type === 'trend') { %><i class="fas fa-chart-line"></i>
+              <% } else if (insight.insight_type === 'recommendation') { %><i class="fas fa-lightbulb"></i>
+              <% } else if (insight.insight_type === 'forecast') { %><i class="fas fa-eye"></i>
+              <% } else { %><i class="fas fa-bell"></i><% } %>
+            </div>
+            <div class="insight-text">
+              <div class="insight-title"><%= insight.title %></div>
+              <div class="insight-msg"><%= insight.message %></div>
+              <div class="insight-meta">
+                <span class="badge bg-light text-dark small"><%= insight.insight_type %></span>
+                <span class="text-muted small ms-1"><%= formatDate(insight.created_at) %></span>
+              </div>
+            </div>
+          </div>
+          <% } %>
+        <% } %>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+<!-- ── Inventory Alerts ────────────────────────────────────────── -->
+<% if (invAlerts && invAlerts.length > 0) { %>
+<div class="row mt-3">
+  <div class="col-12">
+    <div class="card border-warning">
+      <div class="card-header bg-warning bg-opacity-10">
+        <h6 class="card-title mb-0 text-warning"><i class="fas fa-exclamation-triangle me-2"></i>Inventory Low Stock Alerts</h6>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-sm mb-0">
+            <thead><tr><th>Item</th><th>Available</th><th>Reorder Level</th><th>Action</th></tr></thead>
+            <tbody>
+              <% for (const item of invAlerts) { %>
+              <tr>
+                <td><%= item.name %></td>
+                <td><span class="badge bg-danger"><%= item.available_qty %></span></td>
+                <td><%= item.reorder_level %></td>
+                <td><a href="/inventory" class="btn btn-xs btn-warning">Manage</a></td>
+              </tr>
+              <% } %>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+<% } %>
+
+<!-- Charts Script -->
+<script>
+(function () {
+  const revenueData = <%- revenueData || '[]' %>;
+  const statusData  = <%- statusDist  || '[]' %>;
+
+  // Revenue Chart
+  const rCtx = document.getElementById('revenueChart');
+  if (rCtx && revenueData.length) {
+    new Chart(rCtx, {
+      type: 'line',
+      data: {
+        labels: revenueData.map(d => d.month),
+        datasets: [{
+          label: 'Revenue (₱)',
+          data: revenueData.map(d => d.revenue),
+          borderColor: '#4f46e5',
+          backgroundColor: 'rgba(79,70,229,0.08)',
+          fill: true, tension: 0.4, pointRadius: 4,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { display: false } },
+        scales: {
+          y: { beginAtZero: true, ticks: { callback: v => '₱' + v.toLocaleString() } }
+        }
+      }
+    });
+  }
+
+  // Status Donut
+  const sCtx = document.getElementById('statusChart');
+  const statusColors = {
+    pending: '#f59e0b', awaiting_payment: '#3b82f6', confirmed: '#10b981',
+    checked_in: '#6366f1', completed: '#6b7280', cancelled: '#ef4444',
+    rejected: '#dc2626', no_show: '#1f2937',
+  };
+  if (sCtx && statusData.length) {
+    new Chart(sCtx, {
+      type: 'doughnut',
+      data: {
+        labels: statusData.map(d => d.status.replace(/_/g,' ')),
+        datasets: [{
+          data: statusData.map(d => d.cnt),
+          backgroundColor: statusData.map(d => statusColors[d.status] || '#9ca3af'),
+          borderWidth: 2,
+        }]
+      },
+      options: {
+        responsive: true,
+        plugins: { legend: { position: 'bottom', labels: { boxWidth: 12, padding: 8, font: { size: 11 } } } },
+        cutout: '65%',
+      }
+    });
+  }
+})();
+</script>

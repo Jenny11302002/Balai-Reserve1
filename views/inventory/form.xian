@@ -1,0 +1,20 @@
+<% layout('layouts/main') %>
+<div class="page-header"><div><nav aria-label="breadcrumb"><ol class="breadcrumb mb-1"><li class="breadcrumb-item"><a href="/inventory">Inventory</a></li><li class="breadcrumb-item active">Add Item</li></ol></nav><h3 class="mb-0">Add Inventory Item</h3></div></div>
+<% if (errors && errors.length > 0) { %><div class="alert alert-danger"><% for (const e of errors) { %><div><%= e.msg %></div><% } %></div><% } %>
+<div class="row"><div class="col-lg-6"><div class="card"><div class="card-body">
+<form action="/inventory" method="POST">
+  <div class="row g-3">
+    <div class="col-md-8"><label class="form-label required">Item Name</label><input type="text" name="name" class="form-control" value="<%= old.name || '' %>" required /></div>
+    <div class="col-md-4"><label class="form-label">Unit</label><input type="text" name="unit" class="form-control" value="<%= old.unit || 'pcs' %>" placeholder="pcs, sets, rolls..." /></div>
+    <div class="col-md-6"><label class="form-label required">Category</label><select name="category_id" class="form-select" required><option value="">Select...</option><% for (const c of categories) { %><option value="<%= c.id %>" <%= String(old.category_id) === String(c.id) ? 'selected' : '' %>><%= c.name %></option><% } %></select></div>
+    <div class="col-md-6"><label class="form-label required">Total Quantity</label><input type="number" name="total_qty" class="form-control" value="<%= old.total_qty || 0 %>" min="0" required /></div>
+    <div class="col-md-6"><label class="form-label">Reorder Level</label><input type="number" name="reorder_level" class="form-control" value="<%= old.reorder_level || 5 %>" min="0" /></div>
+    <div class="col-md-6"><label class="form-label">Location</label><input type="text" name="location" class="form-control" value="<%= old.location || '' %>" placeholder="Storage room..." /></div>
+    <div class="col-12"><label class="form-label">Description</label><textarea name="description" class="form-control" rows="2"><%= old.description || '' %></textarea></div>
+  </div>
+  <div class="d-flex gap-2 mt-4">
+    <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Add Item</button>
+    <a href="/inventory" class="btn btn-outline-secondary">Cancel</a>
+  </div>
+</form>
+</div></div></div></div>

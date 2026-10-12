@@ -1,0 +1,218 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title><%= title || 'Balai-Reserve' %></title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/css/bootstrap.min.css" />
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css" />
+  <link rel="stylesheet" href="/css/main.css" />
+  <link rel="stylesheet" href="/css/portal.css" />
+</head>
+<body class="portal-body">
+
+  <!-- Portal Navbar -->
+  <nav class="portal-navbar">
+    <div class="container-fluid px-4 d-flex align-items-center justify-content-between" style="height:64px;">
+
+      <!-- Brand -->
+      <a href="/" class="portal-brand text-decoration-none gap-2">
+        <div class="brand-icon-sm me-2"><i class="fas fa-home"></i></div>
+        <div>
+          <div class="fw-bold" style="color:white;font-size:.95rem;letter-spacing:-.2px;">Balai-Reserve</div>
+          <div style="font-size:.6rem;color:rgba(0,229,255,.6);letter-spacing:.04em;">Gloria, Oriental Mindoro</div>
+        </div>
+      </a>
+
+      <!-- Nav links (desktop) -->
+      <div class="d-none d-md-flex align-items-center gap-4">
+        <a href="/portal/rooms"    class="text-white-50 small text-decoration-none portal-nav-link">Rooms</a>
+        <a href="/portal/venues"   class="text-white-50 small text-decoration-none portal-nav-link">Venues</a>
+        <a href="/portal/cottages" class="text-white-50 small text-decoration-none portal-nav-link">Cottages</a>
+        <a href="/portal/calendar" class="text-white-50 small text-decoration-none portal-nav-link">Availability</a>
+        <a href="/#how-to-book"    class="text-white-50 small text-decoration-none portal-nav-link">How to Book</a>
+        <a href="/portal/inquire"  class="text-white-50 small text-decoration-none portal-nav-link">Contact</a>
+      </div>
+
+      <!-- Actions -->
+      <div class="d-flex align-items-center gap-2">
+        <% if (currentUser) { %>
+
+          <!-- Notification Bell -->
+          <div class="dropdown">
+            <button class="portal-bell-btn" type="button" id="portalNotifBtn"
+              data-bs-toggle="dropdown" data-bs-auto-close="outside" aria-expanded="false"
+              title="Notifications">
+              <i class="fas fa-bell"></i>
+              <span class="portal-bell-badge" id="portalNotifBadge"
+                style="<%= (unreadNotifCount && unreadNotifCount > 0) ? '' : 'display:none;' %>">
+                <%= (unreadNotifCount && unreadNotifCount > 9) ? '9+' : (unreadNotifCount || 0) %>
+              </span>
+            </button>
+            <div class="dropdown-menu dropdown-menu-end portal-notif-dropdown" aria-labelledby="portalNotifBtn">
+              <div class="portal-notif-header d-flex align-items-center justify-content-between">
+                <span>Notifications</span>
+                <button type="button" id="portalNotifMarkAll" class="portal-notif-markall">Mark all read</button>
+              </div>
+              <div class="portal-notif-list" id="portalNotifList">
+                <% if (!recentNotifications || recentNotifications.length === 0) { %>
+                  <div class="portal-notif-empty">No notifications yet</div>
+                <% } else { %>
+                  <% for (const n of recentNotifications) { %>
+                  <a href="<%= n.link || '/portal/notifications' %>" class="portal-notif-item <%= n.is_read ? '' : 'unread' %>">
+                    <div class="portal-notif-icon notif-<%= n.type %>">
+                      <% if (n.type === 'reservation') { %><i class="fas fa-calendar-check"></i>
+                      <% } else if (n.type === 'payment') { %><i class="fas fa-money-bill-wave"></i>
+                      <% } else if (n.type === 'inquiry') { %><i class="fas fa-question-circle"></i>
+                      <% } else { %><i class="fas fa-bell"></i><% } %>
+                    </div>
+                    <div class="portal-notif-text">
+                      <div class="portal-notif-title"><%= n.title %></div>
+                      <div class="portal-notif-msg"><%= n.message %></div>
+                      <div class="portal-notif-time"><%= formatDate(n.created_at) %></div>
+                    </div>
+                  </a>
+                  <% } %>
+                <% } %>
+              </div>
+              <div class="portal-notif-footer">
+                <a href="/portal/notifications">View all notifications</a>
+              </div>
+            </div>
+          </div>
+
+          <!-- Account dropdown -->
+          <div class="dropdown">
+            <button class="btn btn-sm btn-outline-light dropdown-toggle" type="button"
+              data-bs-toggle="dropdown" aria-expanded="false">
+              <i class="fas fa-user-circle me-1"></i><span class="d-none d-sm-inline"><%= currentUser.firstName %></span>
+            </button>
+            <ul class="dropdown-menu dropdown-menu-end">
+              <li><a class="dropdown-item" href="/portal/my-reservations"><i class="fas fa-calendar-check me-2"></i>My Bookings</a></li>
+              <li><a class="dropdown-item" href="/portal/my-inquiries"><i class="fas fa-comments me-2"></i>My Inquiries</a></li>
+              <li><a class="dropdown-item" href="/portal/notifications"><i class="fas fa-bell me-2"></i>Notifications</a></li>
+              <li><a class="dropdown-item" href="/portal/profile"><i class="fas fa-user-cog me-2"></i>Profile Settings</a></li>
+              <li><hr class="dropdown-divider"></li>
+              <li><a class="dropdown-item text-danger" href="/auth/logout"><i class="fas fa-sign-out-alt me-2"></i>Logout</a></li>
+            </ul>
+          </div>
+
+        <% } else { %>
+          <a href="/" class="btn btn-sm btn-outline-light">
+            <i class="fas fa-arrow-left me-1"></i>Home
+          </a>
+          <a href="/auth/login" class="btn btn-sm btn-light">
+            <i class="fas fa-sign-in-alt me-1"></i>Sign In
+          </a>
+        <% } %>
+      </div>
+
+    </div>
+  </nav>
+
+  <!-- Flash Messages -->
+  <% if (flash && (flash.success || flash.error || flash.warning || flash.info)) { %>
+  <div class="container-lg pt-3 px-4" id="portalFlash">
+    <% if (flash.success) { %>
+    <div class="alert alert-success alert-dismissible fade show d-flex align-items-start" role="alert">
+      <i class="fas fa-check-circle me-2 mt-1"></i>
+      <div class="flex-grow-1"><%= flash.success %></div>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    <% } %>
+    <% if (flash.error) { %>
+    <div class="alert alert-danger alert-dismissible fade show d-flex align-items-start" role="alert">
+      <i class="fas fa-exclamation-circle me-2 mt-1"></i>
+      <div class="flex-grow-1"><%= flash.error %></div>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    <% } %>
+    <% if (flash.warning) { %>
+    <div class="alert alert-warning alert-dismissible fade show d-flex align-items-start" role="alert">
+      <i class="fas fa-exclamation-triangle me-2 mt-1"></i>
+      <div class="flex-grow-1"><%= flash.warning %></div>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    <% } %>
+    <% if (flash.info) { %>
+    <div class="alert alert-info alert-dismissible fade show d-flex align-items-start" role="alert">
+      <i class="fas fa-info-circle me-2 mt-1"></i>
+      <div class="flex-grow-1"><%= flash.info %></div>
+      <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+    </div>
+    <% } %>
+  </div>
+  <% } %>
+
+  <!-- Content -->
+  <main>
+    <%- body %>
+  </main>
+
+  <!-- Footer -->
+  <footer class="portal-footer mt-5">
+    <div class="container-lg px-4 py-5">
+      <div class="row g-4 mb-4">
+        <div class="col-12 col-md-4">
+          <div class="d-flex align-items-center gap-2 mb-2">
+            <div style="width:32px;height:32px;background:linear-gradient(135deg,#ffd166,#e6a800);border-radius:8px;display:flex;align-items:center;justify-content:center;color:#0a0a0a;font-size:.85rem;box-shadow:0 0 10px rgba(255,209,102,.35);"><i class="fas fa-home"></i></div>
+            <span style="font-size:1rem;font-weight:800;color:#fff;">Balai-Reserve</span>
+          </div>
+          <p style="font-size:.78rem;color:rgba(255,255,255,.45);line-height:1.7;margin-bottom:.75rem;">
+            A premier resort and event venue in Brgy. San Antonio, Gloria, Oriental Mindoro — offering rooms, venues, cottages, and full event management.
+          </p>
+          <div class="d-flex gap-2">
+            <a href="https://www.facebook.com/BalaiMiciano" target="_blank" rel="noopener" style="width:32px;height:32px;border-radius:50%;background:rgba(255,255,255,.08);display:flex;align-items:center;justify-content:center;color:rgba(255,255,255,.6);text-decoration:none;transition:all .2s;" onmouseover="this.style.background='#ffd166';this.style.color='#0a0a0a';" onmouseout="this.style.background='rgba(255,255,255,.08)';this.style.color='rgba(255,255,255,.6)';"><i class="fab fa-facebook-f" style="font-size:.8rem;"></i></a>
+          </div>
+        </div>
+        <div class="col-6 col-md-2">
+          <div style="font-size:.75rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:.75rem;text-transform:uppercase;letter-spacing:.08em;">Browse</div>
+          <div class="d-flex flex-column gap-2" style="font-size:.8rem;">
+            <a href="/portal/rooms"    class="text-white-50 text-decoration-none portal-footer-link">Rooms</a>
+            <a href="/portal/venues"   class="text-white-50 text-decoration-none portal-footer-link">Venues</a>
+            <a href="/portal/cottages" class="text-white-50 text-decoration-none portal-footer-link">Cottages</a>
+            <a href="/portal/book"     class="text-white-50 text-decoration-none portal-footer-link">Book Now</a>
+          </div>
+        </div>
+        <div class="col-6 col-md-2">
+          <div style="font-size:.75rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:.75rem;text-transform:uppercase;letter-spacing:.08em;">Account</div>
+          <div class="d-flex flex-column gap-2" style="font-size:.8rem;">
+            <% if (currentUser) { %>
+              <a href="/portal/my-reservations" class="text-white-50 text-decoration-none portal-footer-link">My Bookings</a>
+              <a href="/portal/my-inquiries" class="text-white-50 text-decoration-none portal-footer-link">My Inquiries</a>
+              <a href="/auth/logout" class="text-white-50 text-decoration-none portal-footer-link">Logout</a>
+            <% } else { %>
+              <a href="/auth/login"    class="text-white-50 text-decoration-none portal-footer-link">Sign In</a>
+              <a href="/auth/register" class="text-white-50 text-decoration-none portal-footer-link">Register</a>
+            <% } %>
+          </div>
+        </div>
+        <div class="col-12 col-md-4">
+          <div style="font-size:.75rem;font-weight:700;color:rgba(255,255,255,.5);margin-bottom:.75rem;text-transform:uppercase;letter-spacing:.08em;">Contact</div>
+          <div class="d-flex flex-column gap-2" style="font-size:.8rem;color:rgba(255,255,255,.6);">
+            <div><i class="fas fa-map-marker-alt me-2" style="color:#ffd166;"></i>Brgy. San Antonio, Gloria, Oriental Mindoro</div>
+            <div><i class="fas fa-phone-alt me-2" style="color:#ffd166;"></i>(02) 8123-4567</div>
+            <div><i class="fas fa-envelope me-2" style="color:#ffd166;"></i>info@balai-reserve.com</div>
+          </div>
+        </div>
+      </div>
+      <hr style="border-color:rgba(255,255,255,.08);margin:0 0 1rem;" />
+      <div class="d-flex flex-wrap justify-content-between align-items-center gap-2" style="font-size:.75rem;color:rgba(255,255,255,.35);">
+        <span>&copy; <%= new Date().getFullYear() %> Balai-Reserve. All rights reserved.</span>
+        <a href="/" style="color:rgba(0,229,255,.5);text-decoration:none;">Back to Home</a>
+      </div>
+    </div>
+  </footer>
+
+  <!-- Toast container for real-time notifications -->
+  <div id="toastContainer"></div>
+
+  <%include('partials/chatbot')%>
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
+  <script src="/js/main.js"></script>
+  <% if (currentUser) { %>
+  <script src="/js/notifications.js"></script>
+  <% } %>
+</body>
+</html>

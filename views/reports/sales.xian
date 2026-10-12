@@ -1,0 +1,87 @@
+<% layout('layouts/main') %>
+
+<%# Print-only branded header (hidden on screen, shown when printing) %>
+<div class="print-header d-none">
+  <div class="print-resort-name"><%= resort.name %></div>
+  <div class="print-resort-addr"><%= resort.address %><% if (resort.phone) { %> &bull; Tel: <%= resort.phone %><% } %><% if (resort.email) { %> &bull; <%= resort.email %><% } %></div>
+  <div class="print-report-title">Sales Report &mdash; <%= filters.from %> to <%= filters.to %></div>
+</div>
+
+<div class="page-header no-print">
+  <div><nav aria-label="breadcrumb"><ol class="breadcrumb mb-1"><li class="breadcrumb-item"><a href="/reports">Reports</a></li><li class="breadcrumb-item active">Sales Report</li></ol></nav><h3 class="mb-0">Sales Report</h3></div>
+  <div class="page-header-actions d-flex gap-2">
+    <div class="btn-group btn-group-sm">
+      <a href="/reports/export/sales?format=xlsx&from=<%= filters.from %>&to=<%= filters.to %>&type=<%= filters.type %>" class="btn btn-outline-success"><i class="fas fa-file-excel me-1"></i>Excel</a>
+      <a href="/reports/export/sales?format=docx&from=<%= filters.from %>&to=<%= filters.to %>&type=<%= filters.type %>" class="btn btn-outline-primary"><i class="fas fa-file-word me-1"></i>Word</a>
+      <a href="/reports/export/sales?format=csv&from=<%= filters.from %>&to=<%= filters.to %>&type=<%= filters.type %>" class="btn btn-outline-secondary"><i class="fas fa-file-csv me-1"></i>CSV</a>
+    </div>
+    <button type="button" class="btn btn-sm btn-dark" onclick="window.print()"><i class="fas fa-print me-1"></i>Print</button>
+  </div>
+</div>
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="GET" action="/reports/sales" class="row g-2 align-items-end">
+      <div class="col-6 col-md-2"><label class="form-label-sm">From</label><input type="date" name="from" value="<%= filters.from %>" class="form-control form-control-sm" /></div>
+      <div class="col-6 col-md-2"><label class="form-label-sm">To</label><input type="date" name="to" value="<%= filters.to %>" class="form-control form-control-sm" /></div>
+      <div class="col-6 col-md-2"><label class="form-label-sm">Group By</label><select name="type" class="form-select form-select-sm"><% for (const t of ['daily','weekly','monthly','yearly']) { %><option value="<%= t %>" <%= filters.type === t ? 'selected' : '' %>><%= t %></option><% } %></select></div>
+      <div class="col-6 col-md-2 pt-3"><button type="submit" class="btn btn-sm btn-primary w-100">Generate</button></div>
+    </form>
+  </div>
+</div>
+<div class="row g-3 mb-3">
+  <div class="col-md-4"><div class="stat-card stat-success"><div class="stat-icon"><i class="fas fa-coins"></i></div><div class="stat-body"><div class="stat-value"><%= formatPeso(totalRevenue) %></div><div class="stat-label">Total Revenue</div></div></div></div>
+  <div class="col-md-4"><div class="stat-card stat-primary"><div class="stat-icon"><i class="fas fa-receipt"></i></div><div class="stat-body"><div class="stat-value"><%= totalTxns %></div><div class="stat-label">Total Transactions</div></div></div></div>
+  <div class="col-md-4"><div class="stat-card stat-info"><div class="stat-icon"><i class="fas fa-chart-pie"></i></div><div class="stat-body"><div class="stat-value"><%= totalTxns > 0 ? formatPeso(totalRevenue / totalTxns) : '—' %></div><div class="stat-label">Avg. Transaction</div></div></div></div>
+</div>
+<div class="row g-3 mb-3">
+  <div class="col-lg-8"><div class="card"><div class="card-header"><h6 class="card-title mb-0">Revenue by <%= labelFormat %></h6></div><div class="card-body"><canvas id="salesChart" height="100"></canvas></div></div></div>
+  <div class="col-lg-4"><div class="card"><div class="card-header"><h6 class="card-title mb-0">Revenue by Type</h6></div><div class="card-body"><canvas id="byTypeChart" height="200"></canvas></div></div></div>
+</div>
+<div class="card">
+  <div class="card-header"><h6 class="card-title mb-0">Sales Data</h6></div>
+  <div class="card-body p-0">
+    <table class="table table-sm mb-0">
+      <thead><tr><th><%= labelFormat %></th><th>Transactions</th><th>Revenue</th></tr></thead>
+      <tbody>
+        <% if (!salesData || salesData.length === 0) { %><tr><td colspan="3" class="text-center py-4 text-muted">No sales data in this range.</td></tr>
+        <% } else { %>
+          <% for (const d of salesData) { %>
+          <tr><td class="fw-medium"><%= d.period %></td><td><%= d.transactions %></td><td class="text-success fw-medium"><%= formatPeso(d.total) %></td></tr>
+          <% } %>
+        <% } %>
+      </tbody>
+    </table>
+  </div>
+</div>
+<script>
+const sd = <%- salesDataJson || '[]' %>;
+const bt = <%- JSON.stringify(byType) || '[]' %>;
+const sc = document.getElementById('salesChart');
+if (sc && sd.length) new Chart(sc, { type:'bar', data:{ labels:sd.map(d=>d.period), datasets:[{ label:'Revenue (₱)', data:sd.map(d=>d.total), backgroundColor:'rgba(16,185,129,0.7)' }]}, options:{ responsive:true, plugins:{legend:{display:false}}, scales:{ y:{ beginAtZero:true, ticks:{callback:v=>'₱'+v.toLocaleString()} }}}});
+const btc = document.getElementById('byTypeChart');
+if (btc && bt.length) new Chart(btc, { type:'doughnut', data:{ labels:bt.map(d=>d.reservation_type), datasets:[{ data:bt.map(d=>d.total), backgroundColor:['#4f46e5','#10b981','#f59e0b','#ef4444'] }]}, options:{ responsive:true, plugins:{legend:{position:'bottom'}}, cutout:'60%' }});
+</script>
+
+<%# Print-only footer %>
+<div class="print-footer d-none">Generated by <%= resort.name %> Booking System</div>
+
+<style>
+@media print {
+  /* Hide app chrome: sidebar, navbar, footer, and no-print controls */
+  .sidebar, .app-navbar, .navbar, .app-footer, .no-print, #toastContainer, .breadcrumb { display: none !important; }
+  .main-wrapper, .page-content, .content-wrapper { margin: 0 !important; padding: 0 !important; width: 100% !important; }
+  body { background: #fff !important; }
+  .print-header { display: block !important; text-align: center; border-bottom: 2px solid #15803d; padding-bottom: 8px; margin-bottom: 16px; }
+  .print-resort-name { font-size: 20px; font-weight: 700; color: #15803d; }
+  .print-resort-addr { font-size: 11px; color: #555; }
+  .print-report-title { font-size: 14px; font-weight: 700; margin-top: 6px; }
+  .print-footer { display: block !important; text-align: center; font-size: 10px; color: #777; border-top: 1px solid #cbd5e1; padding-top: 6px; margin-top: 18px; }
+  .card { border: none !important; box-shadow: none !important; }
+  .stat-card { border: 1px solid #e5e7eb !important; }
+  table { font-size: 11px; }
+  /* Repeat table headers on each printed page */
+  thead { display: table-header-group; }
+  tr { page-break-inside: avoid; }
+  @page { margin: 14mm; }
+}
+</style>

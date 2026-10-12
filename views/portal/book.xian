@@ -1,0 +1,1569 @@
+<% layout('layouts/portal') %>
+
+<%# Embed package inclusions data for JS — one JSON object keyed by package id %>
+<script id="pkgData" type="application/json">
+{
+  <%- packages.map(p => {
+    const safe = JSON.stringify({
+      id:       p.id,
+      name:     p.name,
+      price:    p.price,
+      defaults: (p.defaultInclusions || []).map(i => ({ name: i.name, price: i.price, is_optional: i.is_optional })),
+      addons:   (p.addonInclusions   || []).map(i => ({ name: i.name, price: i.price })),
+    });
+    return JSON.stringify(String(p.id)) + ': ' + safe;
+  }).join(',\n  ') %>
+}
+</script>
+
+<style>
+/* ══════════════════════════════════════════════════════
+   Booking Wizard — Ocean Glassmorphism Theme
+   ══════════════════════════════════════════════════════ */
+:root {
+  --oc-deep:   #020c18;
+  --oc-mid:    #041428;
+  --oc-teal:   #0a3d4a;
+  --oc-cyan:   #00e5ff;
+  --oc-gold:   #ffd166;
+  --oc-green:  #39ff8a;
+}
+
+/* ── Wizard progress header ────────────────────────────── */
+.wizard-header {
+  display: flex; align-items: center; gap: 0;
+  margin-bottom: 2rem; counter-reset: step;
+}
+.wizard-step-btn {
+  flex: 1; display: flex; flex-direction: column; align-items: center;
+  gap: .25rem; padding: .75rem .5rem;
+  background: none; border: none; cursor: default; position: relative;
+}
+.wizard-step-btn:not(:last-child)::after {
+  content: ''; position: absolute; top: 50%; right: 0;
+  transform: translateY(-50%) translateX(50%);
+  width: 100%; height: 2px; background: #e2e8f0; z-index: 0;
+}
+.wizard-step-btn.done::after   { background: var(--oc-cyan); }
+.wizard-step-btn.active::after { background: #e2e8f0; }
+
+.step-circle {
+  width: 36px; height: 36px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: .8rem; font-weight: 700;
+  background: #e2e8f0; color: #6b7280;
+  position: relative; z-index: 1; transition: all .25s;
+}
+.wizard-step-btn.active .step-circle {
+  background: linear-gradient(135deg, var(--oc-deep), var(--oc-teal));
+  color: var(--oc-cyan);
+  box-shadow: 0 0 14px rgba(0,229,255,.3);
+}
+.wizard-step-btn.done .step-circle {
+  background: linear-gradient(135deg, var(--oc-teal), #0d5c6e);
+  color: var(--oc-cyan);
+  box-shadow: 0 0 10px rgba(0,229,255,.2);
+}
+.step-label { font-size: .7rem; font-weight: 600; color: #9ca3af; text-align: center; }
+.wizard-step-btn.active .step-label { color: var(--oc-teal); }
+.wizard-step-btn.done   .step-label { color: var(--oc-teal); }
+
+/* ── Panels ──────────────────────────────────────────── */
+.wizard-panel { display: none; }
+.wizard-panel.active { display: block; }
+
+/* ── Type cards ──────────────────────────────────────── */
+.type-card {
+  border: 2px solid #e2e8f0; border-radius: .875rem;
+  padding: 1.25rem 1rem; text-align: center;
+  cursor: pointer; transition: all .2s; background: #fff;
+}
+.type-card:hover { border-color: var(--oc-teal); background: #f0f9ff; }
+.type-card.selected {
+  border-color: var(--oc-cyan);
+  background: linear-gradient(135deg, rgba(0,229,255,.06), rgba(0,229,255,.02));
+  box-shadow: 0 0 18px rgba(0,229,255,.12);
+}
+.type-card i { font-size: 2rem; color: var(--oc-teal); display: block; margin-bottom: .5rem; }
+.type-card.selected i { color: var(--oc-cyan); }
+.type-card .label { font-size: .85rem; font-weight: 700; color: #0f172a; }
+/* Locked selection: non-chosen type cards are dimmed & non-interactive */
+.type-card-disabled { opacity: .45; pointer-events: none; filter: grayscale(.4); }
+.type-card[data-locked="1"] { cursor: default; position: relative; }
+.type-lock-badge { position: absolute; top: 8px; right: 10px; color: var(--oc-cyan); font-size: .8rem; }
+/* Locked item dropdown: looks read-only */
+.is-locked-select { background: #f1f5f9; cursor: default; pointer-events: none; }
+
+/* ── Package select dropdown ─────────────────────────── */
+.pkg-select-wrap { position: relative; }
+.pkg-select-wrap .form-select { padding-right: 2.5rem; }
+
+/* ── Inclusions panel ────────────────────────────────── */
+.inclusions-panel {
+  display: none;
+  margin-top: 1rem;
+  border: 1px solid rgba(0,229,255,.25);
+  border-radius: 1rem;
+  overflow: hidden;
+  box-shadow: 0 4px 20px rgba(0,229,255,.06);
+}
+.inclusions-panel.visible { display: block; }
+
+.inclusions-header {
+  background: linear-gradient(135deg, var(--oc-deep), var(--oc-mid));
+  padding: .875rem 1.25rem;
+  display: flex; align-items: center; justify-content: space-between;
+  border-bottom: 1px solid rgba(0,229,255,.15);
+}
+.inclusions-header-title {
+  color: #fff; font-weight: 700; font-size: .92rem;
+  display: flex; align-items: center; gap: .5rem;
+}
+.inclusions-header-title i { color: var(--oc-cyan); }
+.inclusions-addon-total {
+  font-size: .82rem; font-weight: 700;
+  color: var(--oc-gold);
+  background: rgba(255,209,102,.12);
+  border: 1px solid rgba(255,209,102,.25);
+  border-radius: .5rem; padding: .2rem .65rem;
+}
+
+/* Included (default) inclusions list */
+.inclusions-defaults {
+  background: #f8fbff;
+  padding: .875rem 1.25rem;
+  border-bottom: 1px solid #e2e8f0;
+}
+.inclusions-defaults-label {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: #64748b; margin-bottom: .6rem;
+}
+.default-inc-item {
+  display: flex; align-items: center; gap: .5rem;
+  padding: .25rem 0; font-size: .84rem; color: #334155;
+}
+.default-inc-item i { color: #10b981; font-size: .75rem; flex-shrink: 0; }
+.default-inc-removable {
+  margin-left: auto; font-size: .7rem; font-weight: 600;
+  color: #ef4444; cursor: pointer; opacity: .7;
+  transition: opacity .15s; padding: .1rem .4rem;
+  border: 1px solid rgba(239,68,68,.3); border-radius: .35rem;
+  background: rgba(239,68,68,.05); white-space: nowrap;
+}
+.default-inc-removable:hover { opacity: 1; background: rgba(239,68,68,.1); }
+.default-inc-item.removed { opacity: .45; }
+.default-inc-item.removed i { color: #94a3b8; }
+.default-inc-item.removed .default-inc-removable { display: none; }
+.default-inc-add-back {
+  margin-left: auto; font-size: .7rem; font-weight: 600;
+  color: #10b981; cursor: pointer; opacity: .8;
+  transition: opacity .15s; padding: .1rem .4rem;
+  border: 1px solid rgba(16,185,129,.3); border-radius: .35rem;
+  background: rgba(16,185,129,.05); white-space: nowrap;
+}
+.default-inc-add-back:hover { opacity: 1; }
+
+/* Add-on inclusions grid */
+.inclusions-addons { padding: 1rem 1.25rem; background: #fff; }
+.inclusions-addons-label {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .08em; color: #64748b; margin-bottom: .75rem;
+  display: flex; align-items: center; gap: .4rem;
+}
+.inclusions-addons-label::after {
+  content: 'Optional — add to your package';
+  font-size: .65rem; font-weight: 500; color: #94a3b8;
+  text-transform: none; letter-spacing: 0;
+}
+.addon-grid {
+  display: grid; grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: .625rem;
+}
+.addon-item {
+  border: 1.5px solid #e2e8f0; border-radius: .75rem;
+  padding: .7rem .875rem; cursor: pointer;
+  transition: all .2s; background: #fff;
+  display: flex; align-items: flex-start; gap: .625rem;
+  user-select: none;
+}
+.addon-item:hover { border-color: rgba(0,229,255,.4); background: #f0f9ff; }
+.addon-item.selected {
+  border-color: var(--oc-cyan);
+  background: linear-gradient(135deg, rgba(0,229,255,.07), rgba(0,229,255,.03));
+  box-shadow: 0 0 12px rgba(0,229,255,.1);
+}
+.addon-check {
+  width: 20px; height: 20px; border-radius: 50%; flex-shrink: 0; margin-top: 2px;
+  border: 2px solid #cbd5e1; display: flex; align-items: center; justify-content: center;
+  font-size: .6rem; color: transparent; transition: all .2s;
+  background: transparent;
+}
+.addon-item.selected .addon-check {
+  background: var(--oc-cyan); border-color: var(--oc-cyan); color: #020c18;
+  box-shadow: 0 0 8px rgba(0,229,255,.35);
+}
+.addon-name { font-size: .84rem; font-weight: 600; color: #0f172a; line-height: 1.35; }
+.addon-price {
+  margin-left: auto; white-space: nowrap; flex-shrink: 0;
+  font-size: .8rem; font-weight: 700; color: var(--oc-teal);
+}
+.addon-item.selected .addon-price { color: var(--oc-cyan); }
+
+/* Custom add-own inclusion row */
+.add-own-row {
+  display: flex; gap: .5rem; margin-top: .875rem; align-items: center;
+}
+.add-own-input {
+  flex: 1; border: 1.5px solid #e2e8f0; border-radius: .625rem;
+  padding: .45rem .875rem; font-size: .84rem;
+  transition: border-color .2s;
+}
+.add-own-input:focus { border-color: var(--oc-cyan); outline: none; box-shadow: 0 0 0 3px rgba(0,229,255,.1); }
+.add-own-price {
+  width: 110px; border: 1.5px solid #e2e8f0; border-radius: .625rem;
+  padding: .45rem .75rem; font-size: .84rem;
+  transition: border-color .2s;
+}
+.add-own-price:focus { border-color: var(--oc-cyan); outline: none; box-shadow: 0 0 0 3px rgba(0,229,255,.1); }
+.add-own-btn {
+  background: linear-gradient(135deg, var(--oc-deep), var(--oc-teal));
+  color: var(--oc-cyan); border: none; border-radius: .625rem;
+  padding: .45rem .875rem; font-size: .82rem; font-weight: 600;
+  cursor: pointer; white-space: nowrap; transition: all .2s;
+  box-shadow: 0 0 10px rgba(0,229,255,.12);
+}
+.add-own-btn:hover { box-shadow: 0 0 18px rgba(0,229,255,.3); }
+
+.custom-inc-list { margin-top: .5rem; display: flex; flex-direction: column; gap: .375rem; }
+.custom-inc-item {
+  display: flex; align-items: center; gap: .5rem;
+  background: rgba(0,229,255,.05); border: 1px solid rgba(0,229,255,.18);
+  border-radius: .625rem; padding: .4rem .75rem; font-size: .82rem;
+}
+.custom-inc-name { flex: 1; color: #0f172a; font-weight: 600; }
+.custom-inc-price { color: var(--oc-teal); font-weight: 700; font-size: .8rem; }
+.custom-inc-remove {
+  background: none; border: none; color: #ef4444; cursor: pointer;
+  font-size: .85rem; padding: 0 .2rem; opacity: .7; transition: opacity .15s;
+}
+.custom-inc-remove:hover { opacity: 1; }
+
+/* ── Payment method cards ─────────────────────────────── */
+.pay-card {
+  border: 2px solid #e2e8f0; border-radius: .875rem;
+  padding: 1rem; cursor: pointer; transition: all .2s; background: #fff;
+  display: flex; align-items: center; gap: .75rem;
+}
+.pay-card:hover { border-color: var(--oc-teal); }
+.pay-card.selected {
+  border-color: var(--oc-cyan);
+  background: linear-gradient(135deg, rgba(0,229,255,.06), rgba(0,229,255,.02));
+  box-shadow: 0 0 16px rgba(0,229,255,.12);
+}
+.pay-card input[type=radio] { display: none; }
+.pay-card-icon { width: 42px; height: 42px; border-radius: .5rem; display: flex; align-items: center; justify-content: center; font-size: 1.25rem; flex-shrink: 0; }
+
+/* ── Summary ─────────────────────────────────────────── */
+.summary-row { display: flex; justify-content: space-between; padding: .4rem 0; border-bottom: 1px solid #f1f5f9; font-size: .875rem; }
+.summary-row:last-child { border-bottom: none; }
+.summary-total { display: flex; justify-content: space-between; padding: .75rem 0 0; font-weight: 700; font-size: 1rem; }
+.summary-inclusion {
+  display: flex; justify-content: space-between;
+  padding: .3rem 0 .3rem .75rem; font-size: .8rem;
+  border-bottom: 1px solid #f1f5f9; color: #475569;
+}
+.summary-inclusion:last-child { border-bottom: none; }
+.summary-section-lbl {
+  font-size: .68rem; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: #94a3b8; padding: .35rem 0 .1rem;
+}
+</style>
+
+<div class="container-lg px-4 py-4">
+  <div class="row justify-content-center">
+    <div class="col-lg-9">
+
+      <div class="mb-3">
+        <a href="/portal" class="portal-back-btn"><i class="fas fa-arrow-left"></i>Back to Portal</a>
+        <h4 class="fw-bold mt-3 mb-0" style="color:var(--oc-deep);"><i class="fas fa-calendar-plus me-2" style="color:var(--oc-teal);"></i>Book a Reservation</h4>
+      </div>
+
+      <!-- Wizard Progress Header -->
+      <div class="wizard-header bg-white rounded-3 border px-3 py-2 mb-4">
+        <div class="wizard-step-btn active" id="hdr1">
+          <div class="step-circle">1</div>
+          <div class="step-label">What to Book</div>
+        </div>
+        <div class="wizard-step-btn" id="hdr2">
+          <div class="step-circle">2</div>
+          <div class="step-label">Dates & Details</div>
+        </div>
+        <div class="wizard-step-btn" id="hdr3">
+          <div class="step-circle">3</div>
+          <div class="step-label">Guest Info</div>
+        </div>
+        <div class="wizard-step-btn" id="hdr4">
+          <div class="step-circle">4</div>
+          <div class="step-label">Payment</div>
+        </div>
+      </div>
+
+      <% if (errors && errors.length > 0) { %>
+      <div class="alert alert-danger mb-3">
+        <% for (const e of errors) { %><div><i class="fas fa-exclamation-circle me-1"></i><%= e.msg %></div><% } %>
+      </div>
+      <% } %>
+
+      <form action="/portal/book" method="POST" id="bookingForm">
+
+        <!-- ═══ STEP 1 — What to Book ════════════════════════════════════ -->
+        <div class="wizard-panel active" id="panel1">
+          <div class="bg-white rounded-3 border p-4">
+            <h5 class="fw-bold mb-1">What would you like to reserve?</h5>
+            <p class="text-muted small mb-4">Select the type of accommodation or event you want to book.</p>
+            <div class="row g-3">
+              <% for (const [val,label,icon,desc] of [
+                ['room',    'Room Stay',          'fas fa-bed',           'Book a standard, deluxe, suite, or family room'],
+                ['venue',   'Venue / Event Hall', 'fas fa-map-marker-alt','Reserve a function hall, garden, or pavilion'],
+                ['event',   'Event Package',      'fas fa-star',          'Wedding, birthday, corporate, debut & more'],
+                ['cottage', 'Cottage',            'fas fa-home',          'Cozy nipa hut or bamboo cottage by the water'],
+              ]) { %>
+              <% const _sel = (old.reservation_type||filters.type); %>
+              <div class="col-6 col-md-3">
+                <div class="type-card h-100 <%= _sel===val?'selected':'' %> <%= (lockedSelection && _sel!==val) ? 'type-card-disabled' : '' %>"
+                     data-type="<%= val %>" <%- lockedSelection ? 'data-locked="1"' : '' %>>
+                  <i class="<%= icon %>"></i>
+                  <div class="label"><%= label %></div>
+                  <div class="text-muted mt-1" style="font-size:.7rem;"><%= desc %></div>
+                  <% if (lockedSelection && _sel===val) { %><span class="type-lock-badge"><i class="fas fa-lock"></i></span><% } %>
+                </div>
+              </div>
+              <% } %>
+            </div>
+            <% if (lockedSelection) { %>
+            <div class="alert alert-info py-2 small mt-3 mb-0">
+              <i class="fas fa-info-circle me-1"></i>You selected this from your chosen listing, so the type and item are locked. Go <a href="/portal/rooms">back to browse</a> to pick a different one.
+            </div>
+            <% } %>
+            <input type="hidden" name="reservation_type" id="reservationType" value="<%= old.reservation_type || filters.type || '' %>" required />
+          </div>
+          <div class="d-flex justify-content-end mt-3">
+            <button type="button" class="btn btn-primary px-4" id="nextStep1" style="background:linear-gradient(135deg,var(--oc-deep),var(--oc-teal));border:none;">
+              Next <i class="fas fa-arrow-right ms-1"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- ═══ STEP 2 — Dates & Details ════════════════════════════════ -->
+        <div class="wizard-panel" id="panel2">
+          <div class="bg-white rounded-3 border p-4">
+            <h5 class="fw-bold mb-1" id="step2Title">Select Room & Dates</h5>
+            <p class="text-muted small mb-4">Choose your preferred option and dates.</p>
+
+            <!-- ── Room fields (room type only) ── -->
+            <div id="roomFields" style="display:none;">
+              <div class="mb-3">
+                <label class="form-label required">Select Room</label>
+                <select name="item_id" id="roomSelect" class="form-select" <%- lockedSelection ? 'data-locked="1"' : '' %>>
+                  <option value="">— Choose a room —</option>
+                  <% for (const r of rooms) { %>
+                  <option value="<%= r.id %>"
+                    data-price="<%= r.price %>"
+                    data-name="<%= r.name %>"
+                    data-type="<%= r.type_name %>"
+                    data-cap="<%= r.capacity %>"
+                    data-images="<%= encodeURIComponent(JSON.stringify(r.imagesList || [])) %>"
+                    <%= String(filters.item_id) === String(r.id) ? 'selected' : '' %>>
+                    <%= r.name %> (cap. <%= r.capacity %>) — <%= formatPeso(r.price) %>/night
+                  </option>
+                  <% } %>
+                </select>
+              </div>
+              <div class="row g-3">
+                <div class="col-6">
+                  <label class="form-label required">Check-in Date</label>
+                  <input type="date" name="check_in_date" id="checkInDate" class="form-control" value="<%= old.check_in_date || filters.checkin || '' %>" />
+                </div>
+                <div class="col-6">
+                  <label class="form-label required">Check-out Date</label>
+                  <input type="date" name="check_out_date" id="checkOutDate" class="form-control" value="<%= old.check_out_date || filters.checkout || '' %>" />
+                </div>
+              </div>
+              <div class="alert alert-info mt-3 py-2 small d-none" id="roomPricePreview">
+                <i class="fas fa-tag me-1"></i><span id="roomPriceText"></span>
+              </div>
+            </div>
+
+            <!-- ── Cottage fields (cottage type only) ── -->
+            <%#
+              Cottage inputs use DISTINCT names (cottage_item_id, cottage_checkin,
+              cottage_start_time, cottage_end_time) to avoid duplicate field names in the POST body.
+              The pre-submit handler copies the active values into canonical reservation fields.
+            %>
+            <div id="cottageFields" style="display:none;">
+              <div class="mb-3">
+                <label class="form-label required">Select Cottage</label>
+                <select name="cottage_item_id" id="cottageSelect" class="form-select" <%- lockedSelection ? 'data-locked="1"' : '' %>>
+                  <option value="">— Choose a cottage —</option>
+                  <% for (const c of cottages) { %>
+                  <option value="<%= c.id %>"
+                    data-price="<%= c.price %>"
+                    data-name="<%= c.name %>"
+                    data-rate-type="<%= c.name === 'Umbrella Table' ? 'day' : 'hour' %>"
+                    data-cap="<%= c.capacity %>"
+                    data-images="<%= encodeURIComponent(JSON.stringify(c.imagesList || [])) %>"
+                    <%= String(filters.item_id) === String(c.id) ? 'selected' : '' %>>
+                    <%= c.name %> — cap. <%= c.capacity %> pax — <%= formatPeso(c.price) %>
+                  </option>
+                  <% } %>
+                </select>
+                <% if (cottages && cottages.length > 0) { %>
+                <div class="alert alert-info mt-2 py-2 small d-none" id="cottagePricePreview">
+                  <i class="fas fa-tag me-1"></i><span id="cottagePriceText"></span>
+                </div>
+                <% } %>
+              </div>
+              <div class="row g-3">
+                <div class="col-6">
+                  <label class="form-label required">Booking Date</label>
+                  <input type="date" name="cottage_checkin" id="cottageDate" class="form-control" value="<%= old.check_in_date || filters.checkin || filters.date || '' %>" />
+                </div>
+                <div class="col-6">
+                  <label class="form-label required">Time In</label>
+                  <input type="time" name="cottage_start_time" id="cottageStartTime" class="form-control" value="<%= old.start_time || '14:00' %>" />
+                </div>
+                <div class="col-6">
+                  <label class="form-label required">Time Out</label>
+                  <input type="time" name="cottage_end_time" id="cottageEndTime" class="form-control" value="<%= old.end_time || '22:00' %>" />
+                </div>
+              </div>
+            </div>
+
+            <!-- ── Venue / Event fields ── -->
+            <div id="venueFields" style="display:none;">
+              <div class="mb-3">
+                <label class="form-label">Select Venue <span class="text-muted small">(optional)</span></label>
+                <%# Venue uses venue_item_id to avoid colliding with roomSelect's item_id %>
+                <select name="venue_item_id" id="venueSelect" class="form-select" <%- lockedSelection ? 'data-locked="1"' : '' %>>
+                  <option value="">— Choose a venue —</option>
+                  <% for (const v of venues) { %>
+                  <option value="<%= v.id %>" data-price="<%= v.price %>" data-name="<%= v.name %>" data-cap="<%= v.capacity %>"
+                    data-images="<%= encodeURIComponent(JSON.stringify(v.imagesList || [])) %>">
+                    <%= v.name %> (Cap: <%= v.capacity %>) — <%= formatPeso(v.price) %>
+                  </option>
+                  <% } %>
+                </select>
+              </div>
+
+              <!-- Package selector -->
+              <div class="mb-2">
+                <label class="form-label">Event Package <span class="text-muted small">(optional)</span></label>
+                <select name="package_id" id="packageSelect" class="form-select">
+                  <option value="">— No package —</option>
+                  <% for (const p of packages) { %>
+                  <option value="<%= p.id %>"
+                    data-price="<%= p.price %>"
+                    data-name="<%= p.name %>">
+                    <%= p.name %> — <%= formatPeso(p.price) %>
+                  </option>
+                  <% } %>
+                </select>
+              </div>
+
+              <!-- ══ INCLUSIONS PANEL (shown when a package is selected) ═══ -->
+              <div class="inclusions-panel" id="inclusionsPanel">
+
+                <div class="inclusions-header">
+                  <div class="inclusions-header-title">
+                    <i class="fas fa-sliders-h"></i>
+                    Customize Your Package Inclusions
+                  </div>
+                  <span class="inclusions-addon-total" id="addonTotalBadge">+₱0 add-ons</span>
+                </div>
+
+                <!-- Default (included) inclusions -->
+                <div class="inclusions-defaults" id="defaultInclusionsWrap">
+                  <div class="inclusions-defaults-label"><i class="fas fa-check-circle me-1" style="color:#10b981;"></i>Included in base price</div>
+                  <div id="defaultInclusionsList"></div>
+                </div>
+
+                <!-- Optional add-ons -->
+                <div class="inclusions-addons" id="addonInclusionsWrap" style="display:none;">
+                  <div class="inclusions-addons-label"><i class="fas fa-plus-circle me-1" style="color:var(--oc-teal);"></i></div>
+                  <div class="addon-grid" id="addonGrid"></div>
+                </div>
+
+                <!-- Add your own custom inclusion -->
+                <div style="padding:.875rem 1.25rem 1rem;background:#f8fbff;border-top:1px solid #e2e8f0;">
+                  <div style="font-size:.68rem;font-weight:700;text-transform:uppercase;letter-spacing:.08em;color:#64748b;margin-bottom:.625rem;">
+                    <i class="fas fa-pencil-alt me-1" style="color:var(--oc-teal);"></i>Add a custom request
+                  </div>
+                  <div class="add-own-row">
+                    <input type="text" id="customIncName" class="add-own-input" placeholder="e.g. Flower Wall Backdrop" maxlength="80" />
+                    <input type="number" id="customIncPrice" class="add-own-price" placeholder="₱ price" min="0" step="100" />
+                    <button type="button" class="add-own-btn" id="addCustomIncBtn">
+                      <i class="fas fa-plus me-1"></i>Add
+                    </button>
+                  </div>
+                  <div class="custom-inc-list" id="customIncList"></div>
+                </div>
+
+              </div>
+              <!-- /inclusions-panel -->
+
+              <!-- Hidden inputs — populated by JS before submit -->
+              <div id="inclusionHiddenInputs"></div>
+
+              <div class="row g-3 mt-1">
+                <div class="col-6 col-md-4">
+                  <label class="form-label required">Event Date</label>
+                  <input type="date" name="event_date" id="eventDate" class="form-control" value="<%= old.event_date || '' %>" />
+                </div>
+                <div class="col-6 col-md-4">
+                  <label class="form-label">Start Time</label>
+                  <input type="time" name="start_time" id="eventStartTime" class="form-control" value="<%= old.start_time || '14:00' %>" />
+                </div>
+                <div class="col-6 col-md-4">
+                  <label class="form-label">End Time</label>
+                  <input type="time" name="end_time" id="eventEndTime" class="form-control" value="<%= old.end_time || '22:00' %>" />
+                </div>
+              </div>
+            </div>
+
+            <%# ── Photo gallery of the selected item ── %>
+            <div id="itemGallery" class="mt-3 d-none">
+              <label class="form-label small fw-semibold mb-2"><i class="fas fa-images me-1"></i>Photos <span class="text-muted">(click to enlarge)</span></label>
+              <div id="itemGalleryThumbs" class="d-flex flex-wrap gap-2"></div>
+            </div>
+
+            <input type="hidden" name="total_amount" id="totalAmount" value="<%= old.total_amount || '' %>" />
+          </div>
+          <div class="d-flex justify-content-between mt-3">
+            <button type="button" class="btn btn-outline-secondary px-4" id="prevStep2">
+              <i class="fas fa-arrow-left me-1"></i> Back
+            </button>
+            <button type="button" class="btn btn-primary px-4" id="nextStep2" style="background:linear-gradient(135deg,var(--oc-deep),var(--oc-teal));border:none;">
+              Next <i class="fas fa-arrow-right ms-1"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- ═══ STEP 3 — Guest Info ══════════════════════════════════════ -->
+        <div class="wizard-panel" id="panel3">
+          <div class="bg-white rounded-3 border p-4">
+            <h5 class="fw-bold mb-1">Guest Information</h5>
+            <p class="text-muted small mb-4">Tell us about your group.</p>
+            <div class="row g-3">
+              <div class="col-md-6">
+                <label class="form-label required">Number of Guests</label>
+                <input type="number" name="num_guests" id="numGuests" class="form-control" value="<%= old.num_guests || 1 %>" min="1" max="500" required />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label required">Contact Number</label>
+                <input type="tel" name="contact_phone" class="form-control" value="<%= old.contact_phone || '' %>" placeholder="+639545425256 or 09545425256" pattern="(?:\+639|09)[0-9]{9}" title="Enter a valid Philippine mobile number, such as +639545425256 or 09545425256." required />
+              </div>
+              <div class="col-12">
+                <label class="form-label">Special Requests / Notes</label>
+                <textarea name="special_requests" class="form-control" rows="4" placeholder="Dietary requirements, accessibility needs, occasion details…"><%= old.special_requests || '' %></textarea>
+              </div>
+            </div>
+          </div>
+          <div class="d-flex justify-content-between mt-3">
+            <button type="button" class="btn btn-outline-secondary px-4" id="prevStep3">
+              <i class="fas fa-arrow-left me-1"></i> Back
+            </button>
+            <button type="button" class="btn btn-primary px-4" id="nextStep3" style="background:linear-gradient(135deg,var(--oc-deep),var(--oc-teal));border:none;">
+              Next <i class="fas fa-arrow-right ms-1"></i>
+            </button>
+          </div>
+        </div>
+
+        <!-- ═══ STEP 4 — Payment & Confirm ══════════════════════════════ -->
+        <div class="wizard-panel" id="panel4">
+          <div class="row g-3">
+
+            <!-- Booking Summary -->
+            <div class="col-lg-5 order-lg-2">
+              <div class="bg-white rounded-3 border p-4 sticky-lg-top" style="top:80px;">
+                <h6 class="fw-bold mb-3" style="color:var(--oc-teal);"><i class="fas fa-receipt me-2"></i>Booking Summary</h6>
+                <div id="summaryContent">
+                  <div class="text-muted small text-center py-3">Complete the previous steps to see summary</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Payment Method -->
+            <div class="col-lg-7 order-lg-1">
+              <div class="bg-white rounded-3 border p-4">
+                <h5 class="fw-bold mb-1">Choose Payment Method</h5>
+                <p class="text-muted small mb-4">Select how you will pay the required downpayment to confirm your booking.</p>
+
+                <div class="d-flex flex-column gap-3" id="paymentMethods">
+                  <label class="pay-card <%= (old.payment_method||'gcash')==='gcash'?'selected':'' %>" for="pm_gcash">
+                    <input type="radio" name="payment_method" id="pm_gcash" value="gcash" <%= (old.payment_method||'gcash')==='gcash'?'checked':'' %> required />
+                    <div class="pay-card-icon" style="background:#f0fdf4;color:#16a34a;"><i class="fas fa-mobile-alt"></i></div>
+                    <div class="flex-grow-1">
+                      <div class="fw-bold small">GCash</div>
+                      <div class="text-muted" style="font-size:.75rem;">Send via GCash to <strong><%= paymentInfo.gcash_number %></strong></div>
+                    </div>
+                    <i class="fas fa-check-circle text-success d-none check-icon" style="font-size:1.1rem;"></i>
+                  </label>
+
+                  <label class="pay-card <%= (old.payment_method||'')==='bank_transfer'?'selected':'' %>" for="pm_bank">
+                    <input type="radio" name="payment_method" id="pm_bank" value="bank_transfer" <%= (old.payment_method||'')==='bank_transfer'?'checked':'' %> />
+                    <div class="pay-card-icon" style="background:#eff6ff;color:#2563eb;"><i class="fas fa-university"></i></div>
+                    <div class="flex-grow-1">
+                      <div class="fw-bold small">Bank Transfer (BDO / BPI)</div>
+                      <div class="text-muted" style="font-size:.75rem;">BDO: <%= paymentInfo.bank_bdo %> &nbsp;/&nbsp; BPI: <%= paymentInfo.bank_bpi %></div>
+                    </div>
+                    <i class="fas fa-check-circle text-success d-none check-icon" style="font-size:1.1rem;"></i>
+                  </label>
+
+                  <label class="pay-card <%= (old.payment_method||'')==='maya'?'selected':'' %>" for="pm_maya">
+                    <input type="radio" name="payment_method" id="pm_maya" value="maya" <%= (old.payment_method||'')==='maya'?'checked':'' %> />
+                    <div class="pay-card-icon" style="background:#fdf4ff;color:#9333ea;"><i class="fas fa-wallet"></i></div>
+                    <div class="flex-grow-1">
+                      <div class="fw-bold small">Maya (PayMaya)</div>
+                      <div class="text-muted" style="font-size:.75rem;">Send via Maya to <strong><%= paymentInfo.maya_number %></strong></div>
+                    </div>
+                    <i class="fas fa-check-circle text-success d-none check-icon" style="font-size:1.1rem;"></i>
+                  </label>
+
+                  <label class="pay-card <%= (old.payment_method||'')==='cash'?'selected':'' %>" for="pm_cash">
+                    <input type="radio" name="payment_method" id="pm_cash" value="cash" <%= (old.payment_method||'')==='cash'?'checked':'' %> />
+                    <div class="pay-card-icon" style="background:#fff7ed;color:#ea580c;"><i class="fas fa-money-bills"></i></div>
+                    <div class="flex-grow-1">
+                      <div class="fw-bold small">Cash (Walk-in)</div>
+                      <div class="text-muted" style="font-size:.75rem;">Pay in person at our front desk upon arrival</div>
+                    </div>
+                    <i class="fas fa-check-circle text-success d-none check-icon" style="font-size:1.1rem;"></i>
+                  </label>
+                </div>
+
+                <div id="paymentInstructions" class="alert alert-info mt-3 small d-none">
+                  <strong><i class="fas fa-info-circle me-1"></i>Payment Instructions:</strong>
+                  <div id="payInstrText" class="mt-1"></div>
+                </div>
+
+                <div class="alert alert-warning mt-3 py-2 small">
+                  <i class="fas fa-exclamation-triangle me-1"></i>
+                  A <strong>50% downpayment</strong> is required to confirm your booking. You will have <strong>48 hours</strong> to complete payment. Failure to pay may result in automatic cancellation.
+                </div>
+
+                <div class="form-check mt-3">
+                  <input class="form-check-input" type="checkbox" id="agreeTerms" required />
+                  <label class="form-check-label small" for="agreeTerms">
+                    I agree to the <a href="#" data-bs-toggle="modal" data-bs-target="#termsModal">booking terms and conditions</a> and understand the downpayment requirement and cancellation policy.
+                  </label>
+                </div>
+              </div>
+            </div>
+
+          </div>
+          <div class="d-flex justify-content-between mt-3">
+            <button type="button" class="btn btn-outline-secondary px-4" id="prevStep4">
+              <i class="fas fa-arrow-left me-1"></i> Back
+            </button>
+            <button type="submit" class="btn btn-lg px-5" id="submitBooking" style="background:linear-gradient(135deg,var(--oc-teal),#0d5c6e);color:var(--oc-cyan);border:none;box-shadow:0 0 18px rgba(0,229,255,.25);font-weight:700;">
+              <i class="fas fa-check me-2"></i>Confirm Booking
+            </button>
+          </div>
+        </div>
+
+      </form>
+    </div>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  /* ── Package data injected from server ─────────────────────────────────── */
+  var pkgData = {};
+  try { pkgData = JSON.parse(document.getElementById('pkgData').textContent); } catch(e) {}
+
+  /* ── State ─────────────────────────────────────────────────────────────── */
+  var currentStep      = 1;
+  var selectedAddons   = {};   // key: addonName → price
+  var removedDefaults  = {};   // key: incName → true  (defaults the user removed)
+  var customInclusions = [];   // [{name, price}] user-typed additions
+
+  /* ── Helpers ───────────────────────────────────────────────────────────── */
+  function fmt(n) {
+    return '₱' + Number(n).toLocaleString('en-PH', { minimumFractionDigits: 2 });
+  }
+
+  // Professional in-app message (falls back to native alert only if unavailable).
+  function notify(message, type) {
+    if (window.appNotify) { window.appNotify(message, type || 'warning'); }
+    else { alert(message); }
+  }
+
+  function goTo(step) {
+    for (var i = 1; i <= 4; i++) {
+      var panel = document.getElementById('panel' + i);
+      var hdr   = document.getElementById('hdr' + i);
+      if (panel) panel.className = 'wizard-panel' + (i === step ? ' active' : '');
+      if (hdr) {
+        hdr.className = 'wizard-step-btn';
+        if (i < step)   hdr.className += ' done';
+        if (i === step) hdr.className += ' active';
+      }
+    }
+    currentStep = step;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  }
+
+  /* ── Step 1: What to book ──────────────────────────────────────────────── */
+  var typeCards    = document.querySelectorAll('.type-card');
+  var resTypeInput = document.getElementById('reservationType');
+  var nextStep1Btn = document.getElementById('nextStep1');
+
+  // When the selection is locked (customer arrived from a specific "Book"
+  // button), the type cannot be changed.
+  var selectionLocked = !!document.querySelector('.type-card[data-locked="1"]');
+
+  typeCards.forEach(function (card) {
+    card.addEventListener('click', function () {
+      if (selectionLocked) return;   // locked: ignore type changes
+      typeCards.forEach(function (c) { c.classList.remove('selected'); });
+      this.classList.add('selected');
+      resTypeInput.value = this.dataset.type;
+      updateStep2Fields(this.dataset.type);
+    });
+  });
+
+  // Locked item selects: revert any attempt to change them, keeping the
+  // pre-chosen value (which still posts because the select stays enabled).
+  ['roomSelect','cottageSelect','venueSelect'].forEach(function (id) {
+    var sel = document.getElementById(id);
+    if (!sel || !sel.hasAttribute('data-locked')) return;
+    var lockedValue = sel.value;
+    sel.classList.add('is-locked-select');
+    sel.addEventListener('mousedown', function (e) { e.preventDefault(); });  // block dropdown open
+    sel.addEventListener('change', function () {
+      if (this.value !== lockedValue) {
+        this.value = lockedValue;
+        this.dispatchEvent(new Event('input', { bubbles: true }));
+      }
+    });
+    sel.addEventListener('keydown', function (e) { e.preventDefault(); });
+  });
+
+  nextStep1Btn.addEventListener('click', function () {
+    if (!resTypeInput.value) { notify('Please select what you would like to book.', 'warning'); return; }
+    updateStep2Fields(resTypeInput.value);
+    goTo(2);
+  });
+
+  var initialType = resTypeInput.value;
+  if (initialType) {
+    var initCard = document.querySelector('.type-card[data-type="' + initialType + '"]');
+    if (initCard) initCard.classList.add('selected');
+    updateStep2Fields(initialType);
+  }
+
+  function updateStep2Fields(type) {
+    var roomF           = document.getElementById('roomFields');
+    var cottageF        = document.getElementById('cottageFields');
+    var venueF          = document.getElementById('venueFields');
+    var eventStartTime  = document.getElementById('eventStartTime');
+    var eventEndTime    = document.getElementById('eventEndTime');
+    var title           = document.getElementById('step2Title');
+    var isEventTimeType = type === 'venue' || type === 'event';
+    roomF.style.display    = (type === 'room')    ? '' : 'none';
+    cottageF.style.display = (type === 'cottage') ? '' : 'none';
+    venueF.style.display   = isEventTimeType ? '' : 'none';
+    if (eventStartTime) eventStartTime.disabled = !isEventTimeType;
+    if (eventEndTime)   eventEndTime.disabled = !isEventTimeType;
+    if (type === 'room')    title.textContent = 'Select Room & Dates';
+    if (type === 'cottage') title.textContent = 'Select Cottage & Date';
+    if (type === 'venue')   title.textContent = 'Select Venue & Date';
+    if (type === 'event')   title.textContent = 'Select Venue & Event Package';
+  }
+
+  /* ── Pre-select item_id from URL ───────────────────────────────────────── */
+  var sp = new URLSearchParams(location.search);
+  var urlItemId = sp.get('item_id');
+  if (urlItemId) {
+    ['roomSelect','venueSelect','cottageSelect'].forEach(function (selId) {
+      var sel = document.getElementById(selId);
+      if (!sel) return;
+      for (var i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === urlItemId) { sel.selectedIndex = i; break; }
+      }
+    });
+  }
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     INCLUSIONS PANEL
+     ═══════════════════════════════════════════════════════════════════════ */
+  var pkgSelect       = document.getElementById('packageSelect');
+  var inclusionsPanel = document.getElementById('inclusionsPanel');
+  var defaultList     = document.getElementById('defaultInclusionsList');
+  var addonWrap       = document.getElementById('addonInclusionsWrap');
+  var addonGrid       = document.getElementById('addonGrid');
+  var addonBadge      = document.getElementById('addonTotalBadge');
+  var hiddenInputsDiv = document.getElementById('inclusionHiddenInputs');
+  var customListDiv   = document.getElementById('customIncList');
+
+  function getAddonTotal() {
+    var t = 0;
+    for (var k in selectedAddons) { if (selectedAddons.hasOwnProperty(k)) t += selectedAddons[k]; }
+    for (var j = 0; j < customInclusions.length; j++) { t += customInclusions[j].price; }
+    return t;
+  }
+
+  function renderInclusionsPanel(pkgId) {
+    var pkg = pkgData[String(pkgId)];
+
+    // Reset state
+    selectedAddons  = {};
+    removedDefaults = {};
+    customInclusions = [];
+    customListDiv.innerHTML = '';
+
+    if (!pkg || pkgId === '' || pkgId === null) {
+      inclusionsPanel.classList.remove('visible');
+      return;
+    }
+
+    inclusionsPanel.classList.add('visible');
+
+    /* ── Default (included) inclusions ─── */
+    defaultList.innerHTML = '';
+    (pkg.defaults || []).forEach(function (inc) {
+      var row = document.createElement('div');
+      row.className = 'default-inc-item';
+      row.dataset.name = inc.name;
+
+      var icon = document.createElement('i');
+      icon.className = 'fas fa-check-circle';
+      row.appendChild(icon);
+
+      var nameSpan = document.createElement('span');
+      nameSpan.textContent = inc.name;
+      row.appendChild(nameSpan);
+
+      // Removable defaults (is_optional = 1 with price = 0) get a "Remove" btn
+      if (inc.is_optional) {
+        var removeBtn = document.createElement('span');
+        removeBtn.className = 'default-inc-removable';
+        removeBtn.textContent = 'Remove';
+        removeBtn.addEventListener('click', function () {
+          removedDefaults[inc.name] = true;
+          row.classList.add('removed');
+          // Show "Add back" button
+          var addBack = document.createElement('span');
+          addBack.className = 'default-inc-add-back';
+          addBack.textContent = 'Add back';
+          addBack.addEventListener('click', function () {
+            delete removedDefaults[inc.name];
+            row.classList.remove('removed');
+            addBack.remove();
+            row.appendChild(removeBtn);
+            syncHiddenInputs();
+            updateAddonBadge();
+            calcVenuePrice();
+          });
+          removeBtn.remove();
+          row.appendChild(addBack);
+          syncHiddenInputs();
+          updateAddonBadge();
+          calcVenuePrice();
+        });
+        row.appendChild(removeBtn);
+      }
+      defaultList.appendChild(row);
+    });
+
+    /* ── Add-on inclusions ─── */
+    addonGrid.innerHTML = '';
+    if (pkg.addons && pkg.addons.length > 0) {
+      addonWrap.style.display = '';
+      pkg.addons.forEach(function (addon) {
+        var card = document.createElement('div');
+        card.className = 'addon-item';
+        card.dataset.name  = addon.name;
+        card.dataset.price = addon.price;
+
+        var chk = document.createElement('div');
+        chk.className = 'addon-check';
+        chk.innerHTML = '<i class="fas fa-check"></i>';
+        card.appendChild(chk);
+
+        var info = document.createElement('div');
+        info.style.flex = '1';
+        var nm = document.createElement('div');
+        nm.className = 'addon-name';
+        nm.textContent = addon.name;
+        info.appendChild(nm);
+        card.appendChild(info);
+
+        var pr = document.createElement('div');
+        pr.className = 'addon-price';
+        pr.textContent = fmt(addon.price);
+        card.appendChild(pr);
+
+        card.addEventListener('click', function () {
+          if (card.classList.contains('selected')) {
+            card.classList.remove('selected');
+            delete selectedAddons[addon.name];
+          } else {
+            card.classList.add('selected');
+            selectedAddons[addon.name] = addon.price;
+          }
+          syncHiddenInputs();
+          updateAddonBadge();
+          calcVenuePrice();
+        });
+        addonGrid.appendChild(card);
+      });
+    } else {
+      addonWrap.style.display = 'none';
+    }
+
+    syncHiddenInputs();
+    updateAddonBadge();
+  }
+
+  function updateAddonBadge() {
+    var t = getAddonTotal();
+    addonBadge.textContent = t > 0 ? '+' + fmt(t) + ' add-ons' : 'No add-ons selected';
+  }
+
+  /* Sync hidden inputs — one per selected/custom inclusion */
+  function syncHiddenInputs() {
+    hiddenInputsDiv.innerHTML = '';
+
+    var pkg = pkgData[String(pkgSelect ? pkgSelect.value : '')];
+
+    // Default inclusions that are NOT removed
+    if (pkg) {
+      (pkg.defaults || []).forEach(function (inc) {
+        if (!removedDefaults[inc.name]) {
+          var inp = document.createElement('input');
+          inp.type  = 'hidden';
+          inp.name  = 'selected_inclusions[]';
+          inp.value = JSON.stringify({ name: inc.name, price: 0 });
+          hiddenInputsDiv.appendChild(inp);
+        }
+      });
+    }
+
+    // Selected optional add-ons
+    for (var name in selectedAddons) {
+      if (selectedAddons.hasOwnProperty(name)) {
+        var inp2 = document.createElement('input');
+        inp2.type  = 'hidden';
+        inp2.name  = 'selected_inclusions[]';
+        inp2.value = JSON.stringify({ name: name, price: selectedAddons[name] });
+        hiddenInputsDiv.appendChild(inp2);
+      }
+    }
+
+    // Custom (user-typed) inclusions
+    customInclusions.forEach(function (ci) {
+      var inp3 = document.createElement('input');
+      inp3.type  = 'hidden';
+      inp3.name  = 'selected_inclusions[]';
+      inp3.value = JSON.stringify({ name: ci.name, price: ci.price });
+      hiddenInputsDiv.appendChild(inp3);
+    });
+  }
+
+  if (pkgSelect) {
+    pkgSelect.addEventListener('change', function () {
+      renderInclusionsPanel(this.value);
+      calcVenuePrice();
+      updateSummary();
+    });
+  }
+
+  /* ── Custom "add your own" inclusion ─────────────────────────────────── */
+  document.getElementById('addCustomIncBtn').addEventListener('click', function () {
+    var nameEl  = document.getElementById('customIncName');
+    var priceEl = document.getElementById('customIncPrice');
+    var name    = (nameEl.value || '').trim();
+    var price   = Math.max(0, parseFloat(priceEl.value) || 0);
+
+    if (!name) { nameEl.focus(); return; }
+
+    customInclusions.push({ name: name, price: price });
+
+    // Render the chip
+    var chip = document.createElement('div');
+    chip.className = 'custom-inc-item';
+    var idx = customInclusions.length - 1;
+
+    var nm = document.createElement('span');
+    nm.className = 'custom-inc-name';
+    nm.textContent = name;
+    chip.appendChild(nm);
+
+    var pr = document.createElement('span');
+    pr.className = 'custom-inc-price';
+    pr.textContent = price > 0 ? fmt(price) : 'Included';
+    chip.appendChild(pr);
+
+    var rmBtn = document.createElement('button');
+    rmBtn.type = 'button';
+    rmBtn.className = 'custom-inc-remove';
+    rmBtn.innerHTML = '<i class="fas fa-times"></i>';
+    rmBtn.addEventListener('click', (function (i) {
+      return function () {
+        customInclusions.splice(i, 1);
+        chip.remove();
+        syncHiddenInputs();
+        updateAddonBadge();
+        calcVenuePrice();
+        updateSummary();
+      };
+    })(idx));
+    chip.appendChild(rmBtn);
+
+    customListDiv.appendChild(chip);
+    nameEl.value  = '';
+    priceEl.value = '';
+    nameEl.focus();
+
+    syncHiddenInputs();
+    updateAddonBadge();
+    calcVenuePrice();
+    updateSummary();
+  });
+
+  /* ── Step 2: price calc ─────────────────────────────────────────────── */
+  function reportDateValidity(field, message) {
+    if (!field) return true;
+    field.setCustomValidity(field.value && field.min && field.value < field.min ? message : '');
+    return field.reportValidity();
+  }
+
+  document.getElementById('prevStep2').addEventListener('click', function () { goTo(1); });
+  document.getElementById('nextStep2').addEventListener('click', function () {
+    var type = resTypeInput.value;
+    if (type === 'room') {
+      var rs = document.getElementById('roomSelect');
+      var ci = document.getElementById('checkInDate');
+      var co = document.getElementById('checkOutDate');
+      if (!rs.value) { notify('Please select a room.', 'warning'); return; }
+      if (!ci.value) { notify('Please select a check-in date.', 'warning'); return; }
+      if (!co.value) { notify('Please select a check-out date.', 'warning'); return; }
+      if (!reportDateValidity(ci, 'Please select a date onward.') || !reportDateValidity(co, 'Please select a date onward.')) return;
+      if (ci.value >= co.value) { notify('Check-out must be after check-in.', 'warning'); return; }
+    } else if (type === 'cottage') {
+      var cs = document.getElementById('cottageSelect');
+      var cd = document.getElementById('cottageDate');
+      var cst = document.getElementById('cottageStartTime');
+      var cet = document.getElementById('cottageEndTime');
+      if (!cs.value) { notify('Please select a cottage.', 'warning'); return; }
+      if (!cd.value) { notify('Please select a booking date.', 'warning'); return; }
+      if (!cst.value) { notify('Please select a time in.', 'warning'); return; }
+      if (!cet.value) { notify('Please select a time out.', 'warning'); return; }
+      if (!reportDateValidity(cd, 'Please select a date onward.') || !cst.reportValidity() || !cet.reportValidity()) return;
+      if (cet.value <= cst.value) { notify('Time out must be after time in.', 'warning'); return; }
+    } else {
+      var ed = document.getElementById('eventDate');
+      if (!ed || !ed.value) { notify('Please select an event date.', 'warning'); return; }
+      if (!reportDateValidity(ed, 'Please select a date onward.')) return;
+    }
+    goTo(3);
+  });
+
+  var checkIn  = document.getElementById('checkInDate');
+  var checkOut = document.getElementById('checkOutDate');
+  var roomSel  = document.getElementById('roomSelect');
+  var totalHid = document.getElementById('totalAmount');
+  var preview  = document.getElementById('roomPricePreview');
+  var prevText = document.getElementById('roomPriceText');
+
+  function calcRoomPrice() {
+    if (!roomSel || !checkIn || !checkOut) return;
+    var price = parseFloat((roomSel.options[roomSel.selectedIndex] || {}).dataset &&
+      roomSel.options[roomSel.selectedIndex].dataset.price || 0);
+    if (checkIn.value && checkOut.value && price > 0) {
+      var nights = Math.ceil((new Date(checkOut.value) - new Date(checkIn.value)) / 86400000);
+      if (nights > 0) {
+        var total = price * nights;
+        totalHid.value = total.toFixed(2);
+        prevText.textContent = nights + ' night(s) × ' + fmt(price) + ' = ' + fmt(total) +
+          ' total. Downpayment: ' + fmt(Math.ceil(total * 0.5));
+        preview.classList.remove('d-none');
+        updateSummary();
+      }
+    }
+  }
+  if (checkIn)  checkIn.addEventListener('change', calcRoomPrice);
+  if (checkOut) checkOut.addEventListener('change', calcRoomPrice);
+  if (roomSel)  roomSel.addEventListener('change', calcRoomPrice);
+
+  // ── Cottage price calc ───────────────────────────────────────────────────
+  var cottageSel     = document.getElementById('cottageSelect');
+  var cottagePreview = document.getElementById('cottagePricePreview');
+  var cottagePrevTxt = document.getElementById('cottagePriceText');
+  var cottageDateEl  = document.getElementById('cottageDate');
+  var cottageStartEl = document.getElementById('cottageStartTime');
+  var cottageEndEl   = document.getElementById('cottageEndTime');
+
+  function calcCottagePrice() {
+    if (!cottageSel || !cottageStartEl || !cottageEndEl) return;
+    var opt = cottageSel.options[cottageSel.selectedIndex];
+    var rate = parseFloat((opt && opt.dataset && opt.dataset.price) || 0);
+    var startTime = cottageStartEl.value;
+    var endTime = cottageEndEl.value;
+    var durationHours = 0;
+    if (startTime && endTime && endTime > startTime) {
+      var startMinutes = Number(startTime.slice(0, 2)) * 60 + Number(startTime.slice(3));
+      var endMinutes = Number(endTime.slice(0, 2)) * 60 + Number(endTime.slice(3));
+      durationHours = (endMinutes - startMinutes) / 60;
+    }
+    var wholeDayRate = opt.dataset.rateType === 'day';
+    var total = rate > 0 && (wholeDayRate || durationHours > 0) ? rate * (wholeDayRate ? 1 : durationHours) : 0;
+    totalHid.value = total.toFixed(2);
+    if (cottagePrevTxt) {
+      cottagePrevTxt.textContent = (opt.dataset.name || 'Cottage') + ' — ' +
+        (wholeDayRate ? 'whole-day rate' : durationHours.toFixed(2) + ' hour(s)') +
+        ' × ' + fmt(rate) + ' = ' + fmt(total) +
+        '. Downpayment: ' + fmt(Math.ceil(total * 0.5));
+    }
+    if (cottagePreview) cottagePreview.classList.remove('d-none');
+    updateSummary();
+  }
+  if (cottageSel)    cottageSel.addEventListener('change', calcCottagePrice);
+  if (cottageDateEl) cottageDateEl.addEventListener('change', calcCottagePrice);
+  if (cottageStartEl) cottageStartEl.addEventListener('change', calcCottagePrice);
+  if (cottageEndEl)   cottageEndEl.addEventListener('change', calcCottagePrice);
+
+  var venueSel = document.getElementById('venueSelect');
+  function calcVenuePrice() {
+    var vPrice = venueSel ? parseFloat((venueSel.options[venueSel.selectedIndex] || {}).dataset &&
+      venueSel.options[venueSel.selectedIndex].dataset.price || 0) : 0;
+    var pPrice = pkgSelect ? parseFloat((pkgSelect.options[pkgSelect.selectedIndex] || {}).dataset &&
+      pkgSelect.options[pkgSelect.selectedIndex].dataset.price || 0) : 0;
+    var addonTotal = getAddonTotal();
+    var total = vPrice + pPrice + addonTotal;
+    if (total > 0) { totalHid.value = total.toFixed(2); }
+    updateSummary();
+  }
+  if (venueSel) venueSel.addEventListener('change', function () { calcVenuePrice(); updateSummary(); });
+
+  /* ── Step 3 ─────────────────────────────────────────────────────────── */
+  document.getElementById('prevStep3').addEventListener('click', function () { goTo(2); });
+  var contactPhoneInput = document.querySelector('[name="contact_phone"]');
+  var contactPhonePattern = /^(?:\+639|09)\d{9}$/;
+  var contactPhoneMessage = 'Enter a valid Philippine mobile number, such as +639545425256 or 09545425256.';
+  if (contactPhoneInput) contactPhoneInput.addEventListener('input', function () {
+    var value = this.value.trim();
+    this.setCustomValidity(value && !contactPhonePattern.test(value) ? contactPhoneMessage : '');
+  });
+  document.getElementById('nextStep3').addEventListener('click', function () {
+    var ng = document.getElementById('numGuests');
+    if (!ng.value || parseInt(ng.value) < 1) { notify('Please enter the number of guests.', 'warning'); return; }
+    if (contactPhoneInput && !contactPhoneInput.reportValidity()) return;
+    updateSummary();
+    goTo(4);
+  });
+
+  /* ── Step 4: payment ────────────────────────────────────────────────── */
+  document.getElementById('prevStep4').addEventListener('click', function () { goTo(3); });
+
+  var payCards  = document.querySelectorAll('.pay-card');
+  var payRadios = document.querySelectorAll('.pay-card input[type=radio]');
+  var instrBox  = document.getElementById('paymentInstructions');
+  var instrText = document.getElementById('payInstrText');
+
+  var instructions = {
+    gcash:         'Send payment to GCash number <strong><a href="tel:<%= paymentInfo.gcash_number.replace(/[^0-9]/g,"") %>"><%= paymentInfo.gcash_number %></a></strong> (<%= paymentInfo.gcash_name %>). Use your booking reference as the message. Take a screenshot of your receipt.',
+    bank_transfer: 'Transfer to <strong>BDO Account: <%= paymentInfo.bank_bdo %></strong> or <strong>BPI Account: <%= paymentInfo.bank_bpi %></strong> (Account name: <%= paymentInfo.bank_name %>). Use your booking reference as the reference.',
+    maya:          'Send payment to Maya number <strong><a href="tel:<%= paymentInfo.maya_number.replace(/[^0-9]/g,"") %>"><%= paymentInfo.maya_number %></a></strong> (<%= paymentInfo.maya_name %>). Include your booking reference in the message. Save your receipt.',
+    cash:          'You may pay in person at our <strong>Front Desk</strong> upon arrival. Reservations without payment may be released after 48 hours.',
+  };
+
+  payRadios.forEach(function (radio) {
+    radio.addEventListener('change', function () {
+      payCards.forEach(function (c) { c.classList.remove('selected'); c.querySelector('.check-icon').classList.add('d-none'); });
+      this.closest('.pay-card').classList.add('selected');
+      this.closest('.pay-card').querySelector('.check-icon').classList.remove('d-none');
+      instrText.innerHTML = instructions[this.value] || '';
+      instrBox.classList.remove('d-none');
+      updateSummary();
+    });
+    if (radio.checked) radio.dispatchEvent(new Event('change'));
+  });
+
+  /* ═══════════════════════════════════════════════════════════════════════
+     SUMMARY BUILDER — Task 7
+     Shows inclusions as line items with prices
+     ═══════════════════════════════════════════════════════════════════════ */
+  function updateSummary() {
+    var type   = resTypeInput.value;
+    var total  = parseFloat(totalHid.value) || 0;
+    var dp     = Math.ceil(total * 0.5);
+    var method = document.querySelector('.pay-card input:checked');
+    var ng     = parseInt((document.getElementById('numGuests') || {}).value || 1);
+
+    var html = '';
+
+    if (type === 'room') {
+      var rs = document.getElementById('roomSelect');
+      var ci = (document.getElementById('checkInDate')  || {}).value || '';
+      var co = (document.getElementById('checkOutDate') || {}).value || '';
+      if (rs && rs.value) {
+        var opt = rs.options[rs.selectedIndex];
+        html += '<div class="summary-row"><span class="text-muted">Room</span><span class="fw-medium">' + (opt.dataset.name || opt.text) + '</span></div>';
+        if (opt.dataset.price) html += '<div class="summary-row"><span class="text-muted">Rate</span><span>' + fmt(opt.dataset.price) + '/night</span></div>';
+      }
+      if (ci) html += '<div class="summary-row"><span class="text-muted">Check-in</span><span>' + ci + '</span></div>';
+      if (co) html += '<div class="summary-row"><span class="text-muted">Check-out</span><span>' + co + '</span></div>';
+      if (ci && co) {
+        var nights2 = Math.ceil((new Date(co) - new Date(ci)) / 86400000);
+        if (nights2 > 0) html += '<div class="summary-row"><span class="text-muted">Nights</span><span>' + nights2 + '</span></div>';
+      }
+
+    } else if (type === 'cottage') {
+      var cs2 = document.getElementById('cottageSelect');
+      var cd2 = (document.getElementById('cottageDate') || {}).value || '';
+      var cst2 = (document.getElementById('cottageStartTime') || {}).value || '';
+      var cet2 = (document.getElementById('cottageEndTime') || {}).value || '';
+      if (cs2 && cs2.value) {
+        var copt = cs2.options[cs2.selectedIndex];
+        html += '<div class="summary-row"><span class="text-muted">Cottage</span><span class="fw-medium">' + (copt.dataset.name || copt.text) + '</span></div>';
+        if (copt.dataset.cap)   html += '<div class="summary-row"><span class="text-muted">Capacity</span><span>' + copt.dataset.cap + ' pax</span></div>';
+        if (copt.dataset.price) html += '<div class="summary-row"><span class="text-muted">Hourly rate</span><span>' + fmt(copt.dataset.price) + '</span></div>';
+      }
+      if (cd2) html += '<div class="summary-row"><span class="text-muted">Booking date</span><span>' + cd2 + '</span></div>';
+      if (cst2 && cet2) {
+        html += '<div class="summary-row"><span class="text-muted">Time</span><span>' + cst2 + ' – ' + cet2 + '</span></div>';
+      }
+
+    } else {
+      // Venue
+      var vs = document.getElementById('venueSelect');
+      if (vs && vs.value) {
+        var vopt = vs.options[vs.selectedIndex];
+        html += '<div class="summary-row"><span class="text-muted">Venue</span><span class="fw-medium">' + (vopt.dataset.name || vopt.text) + '</span></div>';
+        if (vopt.dataset.price && parseFloat(vopt.dataset.price) > 0) {
+          html += '<div class="summary-row"><span class="text-muted">Venue fee</span><span>' + fmt(vopt.dataset.price) + '</span></div>';
+        }
+      }
+
+      // Package
+      var ps = pkgSelect;
+      if (ps && ps.value) {
+        var popt = ps.options[ps.selectedIndex];
+        var basePkg = parseFloat(popt.dataset.price) || 0;
+        html += '<div class="summary-row"><span class="text-muted">Package</span><span class="fw-medium">' + (popt.dataset.name || popt.text) + '</span></div>';
+        if (basePkg > 0) {
+          html += '<div class="summary-row"><span class="text-muted" style="padding-left:.75rem;">Base price</span><span>' + fmt(basePkg) + '</span></div>';
+        }
+
+        // Inclusions breakdown
+        var pkg = pkgData[String(ps.value)];
+        if (pkg) {
+          var hasInclusions = false;
+
+          // Default inclusions (not removed)
+          var activeDefaults = (pkg.defaults || []).filter(function (inc) { return !removedDefaults[inc.name]; });
+          if (activeDefaults.length > 0) {
+            html += '<div class="summary-section-lbl" style="padding-left:.75rem;">Included</div>';
+            activeDefaults.forEach(function (inc) {
+              html += '<div class="summary-inclusion"><span>' + inc.name + '</span><span style="color:#10b981;font-size:.75rem;">✓ Included</span></div>';
+            });
+            hasInclusions = true;
+          }
+
+          // Removed defaults
+          var removedKeys = Object.keys(removedDefaults);
+          if (removedKeys.length > 0) {
+            html += '<div class="summary-section-lbl" style="padding-left:.75rem;color:#ef4444;">Removed</div>';
+            removedKeys.forEach(function (name) {
+              html += '<div class="summary-inclusion" style="opacity:.5;text-decoration:line-through;"><span>' + name + '</span><span>—</span></div>';
+            });
+          }
+
+          // Add-on inclusions selected
+          var addonKeys = Object.keys(selectedAddons);
+          if (addonKeys.length > 0) {
+            html += '<div class="summary-section-lbl" style="padding-left:.75rem;">Add-ons</div>';
+            addonKeys.forEach(function (name) {
+              html += '<div class="summary-inclusion"><span>' + name + '</span><span style="color:var(--oc-teal);font-weight:700;">+' + fmt(selectedAddons[name]) + '</span></div>';
+            });
+            hasInclusions = true;
+          }
+        }
+      }
+
+      // Custom inclusions
+      if (customInclusions.length > 0) {
+        html += '<div class="summary-section-lbl" style="padding-left:.75rem;">Custom requests</div>';
+        customInclusions.forEach(function (ci2) {
+          html += '<div class="summary-inclusion"><span>' + ci2.name + '</span><span style="color:var(--oc-teal);font-weight:700;">' + (ci2.price > 0 ? '+' + fmt(ci2.price) : 'Noted') + '</span></div>';
+        });
+      }
+
+      var ed = (document.getElementById('eventDate') || {}).value || '';
+      if (ed) html += '<div class="summary-row"><span class="text-muted">Event Date</span><span>' + ed + '</span></div>';
+    }
+
+    html += '<div class="summary-row"><span class="text-muted">Guests</span><span>' + ng + '</span></div>';
+
+    if (total > 0) {
+      html += '<hr class="my-2" />';
+      html += '<div class="summary-row"><span class="text-muted fw-bold">Total Amount</span><span class="fw-bold" style="color:var(--oc-teal);">' + fmt(total) + '</span></div>';
+      html += '<div class="summary-row" style="color:#d97706;"><span class="fw-bold">Downpayment Due (50%)</span><span class="fw-bold">' + fmt(dp) + '</span></div>';
+      html += '<div class="summary-row text-success"><span class="text-muted">Balance After Downpayment</span><span>' + fmt(total - dp) + '</span></div>';
+    }
+
+    if (method) {
+      html += '<div class="summary-row"><span class="text-muted">Payment</span><span class="badge bg-light text-dark">' + method.value.replace(/_/g, ' ') + '</span></div>';
+    }
+
+    document.getElementById('summaryContent').innerHTML = html ||
+      '<div class="text-muted small text-center py-2">Complete the form to see summary</div>';
+  }
+
+  /* ── Item photo gallery ─────────────────────────────────────────────── */
+  var galleryWrap   = document.getElementById('itemGallery');
+  var galleryThumbs = document.getElementById('itemGalleryThumbs');
+  function renderGallery(selectEl) {
+    if (!galleryWrap || !galleryThumbs || !selectEl) return;
+    var opt = selectEl.options[selectEl.selectedIndex];
+    var imgs = [];
+    try { imgs = JSON.parse(decodeURIComponent((opt && opt.dataset && opt.dataset.images) || '%5B%5D')); } catch (e) { imgs = []; }
+    if (!imgs || imgs.length === 0) { galleryWrap.classList.add('d-none'); galleryThumbs.innerHTML = ''; return; }
+    galleryThumbs.innerHTML = imgs.map(function (src) {
+      return '<img src="' + src + '" alt="Photo" loading="lazy" ' +
+        'style="width:96px;height:72px;object-fit:cover;border-radius:.5rem;border:1px solid #e5e7eb;cursor:zoom-in;" ' +
+        'onclick="openBookLightbox(\'' + src.replace(/'/g, "\\'") + '\')" />';
+    }).join('');
+    galleryWrap.classList.remove('d-none');
+  }
+  ['roomSelect','cottageSelect','venueSelect'].forEach(function (id) {
+    var sel = document.getElementById(id);
+    if (sel) sel.addEventListener('change', function () { renderGallery(sel); });
+  });
+  // Render gallery for any pre-selected item on load.
+  (function () {
+    var pre = document.getElementById('roomSelect');
+    if (pre && pre.value) renderGallery(pre);
+    var preC = document.getElementById('cottageSelect');
+    if (preC && preC.value) renderGallery(preC);
+  })();
+
+  /* ── Form submit guard + confirmation modal ─────────────────────────── */
+  var bookingForm = document.getElementById('bookingForm');
+  // Opt this form out of main.js's global "Processing…" double-submit handler,
+  // which otherwise disabled the button while we only opened the confirm modal.
+  bookingForm.setAttribute('data-no-autosubmit-lock', '1');
+
+  // Validate Step-4 fields. Returns true when the booking is ready to submit.
+  function validateBooking() {
+    if (!document.getElementById('agreeTerms').checked) {
+      notify('Please agree to the terms and conditions.', 'warning'); return false;
+    }
+    if (!document.querySelector('.pay-card input:checked')) {
+      notify('Please select a payment method.', 'warning'); return false;
+    }
+    if (!totalHid.value || parseFloat(totalHid.value) <= 0) {
+      notify('Could not calculate booking total. Please go back and select your dates.', 'warning'); return false;
+    }
+    return true;
+  }
+
+  // Consolidate per-section fields into the canonical POST fields, then submit.
+  // Uses form.submit() (not requestSubmit) so it bypasses the submit-event
+  // guards entirely and always posts exactly once.
+  function finalizeAndSubmit() {
+    var type = resTypeInput.value;
+    var form = bookingForm;
+
+    function setHidden(name, value) {
+      var el = form.querySelector('input[type=hidden][name="' + name + '"]');
+      if (!el) { el = document.createElement('input'); el.type = 'hidden'; el.name = name; form.appendChild(el); }
+      el.value = value || '';
+    }
+
+    if (type === 'cottage') {
+      var cs = document.getElementById('cottageSelect');
+      var cd = document.getElementById('cottageDate');
+      var cst = document.getElementById('cottageStartTime');
+      var cet = document.getElementById('cottageEndTime');
+      setHidden('item_id',        cs ? cs.value : '');
+      setHidden('check_in_date',  cd ? cd.value : '');
+      setHidden('start_time',     cst ? cst.value : '');
+      setHidden('end_time',       cet ? cet.value : '');
+      if (cs)  cs.disabled  = true;
+      if (cd)  cd.disabled  = true;
+      if (cst) cst.disabled = true;
+      if (cet) cet.disabled = true;
+    } else if (type === 'venue' || type === 'event') {
+      var vs = document.getElementById('venueSelect');
+      var ed = document.getElementById('eventDate');
+      setHidden('item_id',     vs ? vs.value : '');
+      setHidden('event_date',  ed ? ed.value : '');
+      if (vs) vs.disabled = true;
+    }
+
+    syncHiddenInputs();
+
+    var btn = document.getElementById('submitBooking');
+    if (btn) { btn.disabled = true; btn.innerHTML = '<span class="spinner-border spinner-border-sm me-2"></span>Processing…'; }
+
+    form.submit();   // native submit — does NOT re-fire the submit event
+  }
+
+  // The visible "Confirm Booking" button first validates, then opens the modal.
+  bookingForm.addEventListener('submit', function (e) {
+    e.preventDefault();          // never submit directly from the form button
+    if (!validateBooking()) return;
+    showBookingConfirm();
+  });
+
+  /* ── Min dates ──────────────────────────────────────────────────────── */
+  var today = new Date().toISOString().slice(0, 10);
+  ['checkInDate','checkOutDate','eventDate','cottageDate'].forEach(function (id) {
+    var el = document.getElementById(id); if (el) el.min = today;
+  });
+  if (checkIn) checkIn.addEventListener('change', function () {
+    if (checkOut) { checkOut.min = this.value; if (checkOut.value && checkOut.value <= this.value) checkOut.value = ''; }
+  });
+
+  /* ── Booking confirmation modal ─────────────────────────────────────── */
+  window.showBookingConfirm = function () {
+    // Build a readable summary from the live summary content.
+    var summaryHtml = document.getElementById('summaryContent') ? document.getElementById('summaryContent').innerHTML : '';
+    var body = document.getElementById('bookingConfirmBody');
+    if (body) body.innerHTML = summaryHtml || '<p class="text-muted">Please review your booking details.</p>';
+    var modalEl = document.getElementById('bookingConfirmModal');
+    if (window.bootstrap && modalEl) {
+      bootstrap.Modal.getOrCreateInstance(modalEl).show();
+    } else if (window.confirmModal) {
+      // Fallback: professional confirm modal from main.js
+      window.confirmModal({ title: 'Confirm Your Booking', message: 'Submit this booking? A downpayment will be required to confirm your reservation.', okText: 'Confirm & Submit' })
+        .then(function (ok) { if (ok) finalizeAndSubmit(); });
+    } else if (confirm('Confirm this booking?')) {
+      finalizeAndSubmit();
+    }
+  };
+  // NOTE: the confirmation & terms modals are rendered AFTER this inline script
+  // in the document, so their buttons don't exist yet when this runs. Use
+  // delegated listeners on document so the clicks are always caught.
+  document.addEventListener('click', function (e) {
+    // Confirm & Submit Booking
+    if (e.target.closest('#bookingConfirmProceed')) {
+      e.preventDefault();
+      var modalEl = document.getElementById('bookingConfirmModal');
+      if (window.bootstrap && modalEl) bootstrap.Modal.getOrCreateInstance(modalEl).hide();
+      finalizeAndSubmit();
+      return;
+    }
+    // "I Understand & Agree" in the Terms modal ticks the agreement checkbox.
+    if (e.target.closest('#termsAgreeBtn')) {
+      var cb = document.getElementById('agreeTerms');
+      if (cb) cb.checked = true;
+    }
+  });
+
+  /* ── Simple lightbox for booking-page photos ────────────────────────── */
+  window.openBookLightbox = function (src) {
+    var lb = document.getElementById('bookLightbox');
+    if (!lb) return;
+    document.getElementById('bookLightboxImg').src = src;
+    lb.classList.add('open');
+    document.body.style.overflow = 'hidden';
+  };
+  window.closeBookLightbox = function () {
+    var lb = document.getElementById('bookLightbox');
+    if (!lb) return;
+    lb.classList.remove('open');
+    document.getElementById('bookLightboxImg').src = '';
+    document.body.style.overflow = '';
+  };
+  document.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeBookLightbox(); });
+
+})();
+</script>
+
+<%# ── Booking confirmation modal ──────────────────────────────────────── %>
+<div class="modal fade" id="bookingConfirmModal" tabindex="-1" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header bg-success bg-opacity-10">
+        <h5 class="modal-title"><i class="fas fa-check-circle text-success me-2"></i>Confirm Your Booking</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p class="text-muted small mb-3">Please review your booking details before submitting. A downpayment will be required to confirm your reservation.</p>
+        <div id="bookingConfirmBody" class="border rounded p-3 bg-light small"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">
+          <i class="fas fa-pen me-1"></i>Review Again
+        </button>
+        <button type="button" class="btn btn-success" id="bookingConfirmProceed">
+          <i class="fas fa-check me-1"></i>Confirm &amp; Submit Booking
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%# ── Booking Terms & Conditions modal ────────────────────────────────── %>
+<div class="modal fade" id="termsModal" tabindex="-1" aria-labelledby="termsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-dialog-centered modal-dialog-scrollable modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="termsModalLabel"><i class="fas fa-file-contract text-primary me-2"></i>Booking Terms &amp; Conditions</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body small" style="line-height:1.6;">
+        <p class="text-muted">These terms apply to all reservations made with <strong><%= terms.resortName %></strong>. Please read them carefully before confirming your booking.</p>
+
+        <h6 class="fw-bold mt-3">1. Reservation &amp; Downpayment</h6>
+        <p>A reservation is only confirmed once the required downpayment of <strong><%= terms.downpaymentPercent %>%</strong> of the total amount has been paid and verified by our staff. Bookings without a submitted downpayment may be released after 48 hours.</p>
+
+        <h6 class="fw-bold mt-3">2. Payment</h6>
+        <p>Downpayments may be paid via GCash, Maya, bank transfer, or cash at the front desk. For online payments, you must upload a clear screenshot of your payment receipt. The remaining balance must be settled on or before check-in.</p>
+
+        <h6 class="fw-bold mt-3">3. Check-in &amp; Check-out</h6>
+        <p>Standard check-in time is <strong><%= terms.checkInTime %></strong> and check-out time is <strong><%= terms.checkOutTime %></strong>. Early check-in or late check-out is subject to availability and may incur additional charges.</p>
+
+        <h6 class="fw-bold mt-3">4. Cancellation &amp; Refund Policy</h6>
+        <p><%= terms.cancellationPolicy %></p>
+        <p>Approved refunds are processed to your nominated GCash account or through the original payment method, subject to staff review.</p>
+
+        <h6 class="fw-bold mt-3">5. Guest Responsibilities</h6>
+        <ul class="mb-2">
+          <li>The number of guests must not exceed the stated capacity of the room, cottage, or venue.</li>
+          <li>Guests are responsible for any damage to property or facilities during their stay.</li>
+          <li>Valid identification may be required upon check-in.</li>
+        </ul>
+
+        <h6 class="fw-bold mt-3">6. Liability</h6>
+        <p>The resort is not liable for loss of personal belongings. Guests are advised to secure their valuables. Management reserves the right to refuse service or cancel a reservation for violations of these terms.</p>
+
+        <p class="text-muted mt-3 mb-0">By checking the agreement box, you acknowledge that you have read, understood, and agreed to these terms and conditions.</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-outline-secondary" data-bs-dismiss="modal">Close</button>
+        <button type="button" class="btn btn-primary" id="termsAgreeBtn" data-bs-dismiss="modal">
+          <i class="fas fa-check me-1"></i>I Understand &amp; Agree
+        </button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<%# ── Booking-page image lightbox ─────────────────────────────────────── %>
+<div id="bookLightbox" class="book-lb-overlay" onclick="closeBookLightbox()">
+  <span class="book-lb-close">&times;</span>
+  <img id="bookLightboxImg" src="" alt="Photo" onclick="event.stopPropagation()" />
+</div>
+<style>
+  .book-lb-overlay { display:none; position:fixed; inset:0; z-index:10600; background:rgba(2,12,24,.94); backdrop-filter:blur(3px); align-items:center; justify-content:center; }
+  .book-lb-overlay.open { display:flex; }
+  .book-lb-overlay img { max-width:92vw; max-height:88vh; object-fit:contain; border-radius:.5rem; box-shadow:0 10px 40px rgba(0,0,0,.5); }
+  .book-lb-close { position:fixed; top:18px; right:26px; color:#fff; font-size:2.2rem; cursor:pointer; line-height:1; }
+</style>

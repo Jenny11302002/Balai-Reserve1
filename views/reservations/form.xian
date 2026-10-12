@@ -1,0 +1,186 @@
+<% layout('layouts/main') %>
+
+<div class="page-header">
+  <div>
+    <nav aria-label="breadcrumb"><ol class="breadcrumb mb-1"><li class="breadcrumb-item"><a href="/reservations">Reservations</a></li><li class="breadcrumb-item active">New Reservation</li></ol></nav>
+    <h3 class="mb-0">New Reservation</h3>
+  </div>
+</div>
+
+<% if (errors && errors.length > 0) { %>
+<div class="alert alert-danger"><% for (const e of errors) { %><div><i class="fas fa-exclamation-circle me-1"></i><%= e.msg %></div><% } %></div>
+<% } %>
+
+<div class="row">
+  <div class="col-lg-8">
+    <div class="card">
+      <div class="card-body">
+        <form action="/reservations" method="POST">
+
+          <!-- Step 1: Customer & Type -->
+          <h6 class="form-section-title"><i class="fas fa-user me-2"></i>Customer & Booking Type</h6>
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <label class="form-label required">Customer</label>
+              <select name="customer_id" class="form-select" required>
+                <option value="">Select customer...</option>
+                <% for (const c of customers) { %>
+                <option value="<%= c.id %>" <%= String(old.customer_id) === String(c.id) ? 'selected' : '' %>><%= c.first_name %> <%= c.last_name %> (<%= c.customer_code %>)</option>
+                <% } %>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label required">Reservation Type</label>
+              <select name="reservation_type" id="reservationType" class="form-select" required>
+                <option value="">Select type...</option>
+                <option value="room"   <%= old.reservation_type === 'room'   ? 'selected' : '' %>>Room</option>
+                <option value="venue"  <%= old.reservation_type === 'venue'  ? 'selected' : '' %>>Venue</option>
+                <option value="event"  <%= old.reservation_type === 'event'  ? 'selected' : '' %>>Event</option>
+                <option value="cottage"<%= old.reservation_type === 'cottage'? 'selected' : '' %>>Cottage</option>
+              </select>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label required">Number of Guests</label>
+              <input type="number" name="num_guests" class="form-control" value="<%= old.num_guests || 1 %>" min="1" required />
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Source</label>
+              <select name="source" class="form-select">
+                <% for (const s of ['walk_in','online','phone','staff']) { %>
+                <option value="<%= s %>" <%= (old.source || 'walk_in') === s ? 'selected' : '' %>><%= s.replace(/_/g,' ').replace(/\b\w/g, l => l.toUpperCase()) %></option>
+                <% } %>
+              </select>
+            </div>
+          </div>
+
+          <!-- Step 2: Room Fields -->
+          <div id="roomFields" class="booking-fields" style="display:none;">
+            <h6 class="form-section-title"><i class="fas fa-door-open me-2"></i>Room Details</h6>
+            <div class="row g-3 mb-4">
+              <div class="col-md-12">
+                <label class="form-label">Select Room</label>
+                <select name="item_id" class="form-select">
+                  <option value="">Select available room...</option>
+                  <% for (const r of rooms) { %>
+                  <option value="<%= r.id %>" data-price="<%= r.price %>"><%= r.room_number %> – <%= r.name %> (Cap: <%= r.capacity %>) – <%= formatPeso(r.price) %>/night</option>
+                  <% } %>
+                </select>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label required">Check-in Date</label>
+                <input type="date" name="check_in_date" class="form-control" id="checkInDate" value="<%= old.check_in_date || '' %>" />
+              </div>
+              <div class="col-md-6">
+                <label class="form-label required">Check-out Date</label>
+                <input type="date" name="check_out_date" class="form-control" id="checkOutDate" value="<%= old.check_out_date || '' %>" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 2: Venue / Event Fields -->
+          <div id="venueFields" class="booking-fields" style="display:none;">
+            <h6 class="form-section-title"><i class="fas fa-map-marker-alt me-2"></i>Venue / Event Details</h6>
+            <div class="row g-3 mb-4">
+              <div class="col-md-12">
+                <label class="form-label">Select Venue</label>
+                <select name="item_id" class="form-select">
+                  <option value="">Select venue...</option>
+                  <% for (const v of venues) { %>
+                  <option value="<%= v.id %>" data-price="<%= v.price %>"><%= v.name %> (Cap: <%= v.capacity %>) – <%= formatPeso(v.price) %></option>
+                  <% } %>
+                </select>
+              </div>
+              <div class="col-md-12">
+                <label class="form-label">Event Package (optional)</label>
+                <select name="package_id" class="form-select">
+                  <option value="">No package</option>
+                  <% for (const p of packages) { %>
+                  <option value="<%= p.id %>" data-price="<%= p.price %>"><%= p.name %> – <%= formatPeso(p.price) %></option>
+                  <% } %>
+                </select>
+              </div>
+              <div class="col-md-4">
+                <label class="form-label required">Event Date</label>
+                <input type="date" name="event_date" class="form-control" value="<%= old.event_date || '' %>" />
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Start Time</label>
+                <input type="time" name="start_time" class="form-control" value="<%= old.start_time || '' %>" />
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">End Time</label>
+                <input type="time" name="end_time" class="form-control" value="<%= old.end_time || '' %>" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Step 3: Pricing -->
+          <h6 class="form-section-title"><i class="fas fa-money-bill-wave me-2"></i>Pricing</h6>
+          <div class="row g-3 mb-4">
+            <div class="col-md-6">
+              <label class="form-label required">Total Amount (₱)</label>
+              <div class="input-group">
+                <span class="input-group-text">₱</span>
+                <input type="number" name="total_amount" id="totalAmount" class="form-control" value="<%= old.total_amount || '' %>" min="0" step="0.01" required />
+              </div>
+            </div>
+            <div class="col-md-6">
+              <label class="form-label">Required Downpayment (₱)</label>
+              <div class="input-group">
+                <span class="input-group-text">₱</span>
+                <input type="number" name="downpayment_req" id="downpaymentReq" class="form-control" value="<%= old.downpayment_req || '' %>" min="0" step="0.01" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Notes -->
+          <div class="mb-4">
+            <label class="form-label">Special Requests / Notes</label>
+            <textarea name="special_requests" class="form-control" rows="3" placeholder="Any special requests or notes..."><%= old.special_requests || '' %></textarea>
+          </div>
+
+          <div class="d-flex gap-2">
+            <button type="submit" class="btn btn-primary"><i class="fas fa-save me-1"></i>Create Reservation</button>
+            <a href="/reservations" class="btn btn-outline-secondary">Cancel</a>
+          </div>
+
+        </form>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const resType     = document.getElementById('reservationType');
+const roomFields  = document.getElementById('roomFields');
+const venueFields = document.getElementById('venueFields');
+const totalAmt    = document.getElementById('totalAmount');
+const downpayReq  = document.getElementById('downpaymentReq');
+
+function toggleFields() {
+  const val = resType.value;
+  roomFields.style.display  = val === 'room'    ? '' : 'none';
+  venueFields.style.display = (val === 'venue' || val === 'event') ? '' : 'none';
+}
+resType.addEventListener('change', toggleFields);
+toggleFields();
+
+// Auto-calculate total for rooms based on nights
+const checkIn  = document.getElementById('checkInDate');
+const checkOut = document.getElementById('checkOutDate');
+if (checkIn && checkOut) {
+  function calcTotal() {
+    const roomSel = document.querySelector('[name="item_id"]');
+    const price   = roomSel ? parseFloat(roomSel.options[roomSel.selectedIndex]?.dataset?.price || 0) : 0;
+    if (checkIn.value && checkOut.value && price > 0) {
+      const nights = Math.ceil((new Date(checkOut.value) - new Date(checkIn.value)) / 86400000);
+      if (nights > 0) {
+        totalAmt.value = (price * nights).toFixed(2);
+        downpayReq.value = (price * nights * 0.5).toFixed(2);
+      }
+    }
+  }
+  checkIn.addEventListener('change', calcTotal);
+  checkOut.addEventListener('change', calcTotal);
+}
+</script>

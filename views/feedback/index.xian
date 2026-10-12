@@ -1,0 +1,142 @@
+<% layout('layouts/main') %>
+
+<div class="page-header">
+  <div><h3 class="mb-1">Customer Feedback</h3><p class="text-muted mb-0">Customer ratings and reviews</p></div>
+</div>
+
+<!-- Summary Cards -->
+<div class="row g-3 mb-4">
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-warning">
+      <div class="stat-icon"><i class="fas fa-star"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= summary.avg_rating || '—' %></div>
+        <div class="stat-label">Average Rating</div>
+        <div class="stat-sub"><%= summary.total %> total reviews</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-success">
+      <div class="stat-icon"><i class="fas fa-smile"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= summary.five_star + summary.four_star %></div>
+        <div class="stat-label">Positive (4–5 ★)</div>
+        <div class="stat-sub">
+          <%= summary.total > 0 ? Math.round(((summary.five_star + summary.four_star) / summary.total) * 100) : 0 %>% of reviews
+        </div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-info">
+      <div class="stat-icon"><i class="fas fa-meh"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= summary.three_star %></div>
+        <div class="stat-label">Neutral (3 ★)</div>
+      </div>
+    </div>
+  </div>
+  <div class="col-6 col-lg-3">
+    <div class="stat-card stat-danger">
+      <div class="stat-icon"><i class="fas fa-frown"></i></div>
+      <div class="stat-body">
+        <div class="stat-value"><%= summary.two_star + summary.one_star %></div>
+        <div class="stat-label">Negative (1–2 ★)</div>
+        <div class="stat-sub">Needs attention</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Rating Distribution Bar -->
+<% if (summary.total > 0) { %>
+<div class="card mb-4">
+  <div class="card-body">
+    <h6 class="card-title mb-3">Rating Breakdown</h6>
+    <% const bars = [[5, summary.five_star], [4, summary.four_star], [3, summary.three_star], [2, summary.two_star], [1, summary.one_star]]; %>
+    <% for (const [s, cnt] of bars) { %>
+    <div class="d-flex align-items-center gap-2 mb-2">
+      <div class="text-nowrap small fw-bold" style="width:40px;"><%= s %> <i class="fas fa-star text-warning" style="font-size:.75rem;"></i></div>
+      <div class="flex-grow-1" style="height:10px;background:#f3f4f6;border-radius:5px;overflow:hidden;">
+        <div style="height:100%;width:<%= summary.total > 0 ? Math.round((cnt/summary.total)*100) : 0 %>%;background:<%= s>=4?'#10b981':s===3?'#f59e0b':'#ef4444' %>;border-radius:5px;transition:width .3s;"></div>
+      </div>
+      <div class="text-muted small text-nowrap" style="width:40px;"><%= cnt %></div>
+    </div>
+    <% } %>
+  </div>
+</div>
+<% } %>
+
+<!-- Filters -->
+<div class="card mb-3">
+  <div class="card-body py-2">
+    <form method="GET" action="/feedback" class="row g-2 align-items-end">
+      <div class="col-6 col-md-2">
+        <select name="rating" class="form-select form-select-sm">
+          <option value="">All Ratings</option>
+          <% for (let s=5;s>=1;s--) { %>
+          <option value="<%= s %>" <%= parseInt(filters.rating)===s?'selected':'' %>><%= s %> Star<%= s!==1?'s':'' %></option>
+          <% } %>
+        </select>
+      </div>
+      <div class="col-6 col-md-2">
+        <select name="category" class="form-select form-select-sm">
+          <option value="">All Categories</option>
+          <% for (const c of categories) { %>
+          <option value="<%= c %>" <%= filters.category===c?'selected':'' %>><%= c.charAt(0).toUpperCase()+c.slice(1) %></option>
+          <% } %>
+        </select>
+      </div>
+      <div class="col-4 col-md-1"><button type="submit" class="btn btn-sm btn-primary w-100"><i class="fas fa-search"></i></button></div>
+      <div class="col-4 col-md-1"><a href="/feedback" class="btn btn-sm btn-outline-secondary w-100">Clear</a></div>
+    </form>
+  </div>
+</div>
+
+<!-- Feedback List -->
+<div class="card">
+  <div class="card-body p-0">
+    <% if (!feedbackList || feedbackList.length === 0) { %>
+    <div class="empty-state py-5">
+      <i class="fas fa-star-half-alt"></i>
+      <p>No feedback found.</p>
+    </div>
+    <% } else { %>
+      <% for (const f of feedbackList) { %>
+      <div class="p-3 border-bottom feedback-list-item">
+        <div class="row g-2 align-items-start">
+          <div class="col">
+            <div class="d-flex flex-wrap align-items-center gap-2 mb-1">
+              <!-- Stars -->
+              <div>
+                <% for (let s=1;s<=5;s++) { %><i class="fas fa-star" style="color:<%= s<=f.rating?'#f59e0b':'#d1d5db' %>;font-size:.8rem;"></i><% } %>
+              </div>
+              <a href="/crm/customers/<%= f.customer_id %>" class="fw-medium text-dark text-decoration-none small"><%= f.customer_name %></a>
+              <span class="badge bg-light text-dark small"><%= f.category %></span>
+              <span class="badge bg-light text-dark small"><%= f.reservation_type %></span>
+              <% if (f.admin_response) { %><span class="badge badge-success small"><i class="fas fa-reply me-1"></i>Responded</span><% } %>
+              <% if (!f.is_public) { %><span class="badge badge-secondary small">Hidden</span><% } %>
+            </div>
+            <p class="mb-1 small"><%= f.comments %></p>
+            <% if (f.suggestions) { %><p class="text-muted small fst-italic mb-1">"<%= f.suggestions %>"</p><% } %>
+            <% if (f.admin_response) { %>
+            <div class="bg-light p-2 rounded mt-1 small">
+              <i class="fas fa-reply text-primary me-1"></i><strong>Our response:</strong> <%= f.admin_response %>
+            </div>
+            <% } %>
+          </div>
+          <div class="col-auto text-end">
+            <div class="text-muted small text-nowrap"><%= formatDate(f.created_at) %></div>
+            <div class="small"><a href="/reservations/<%= f.reservation_id %>"><code class="small"><%= f.booking_ref %></code></a></div>
+            <a href="/feedback/<%= f.id %>" class="btn btn-xs btn-outline-primary mt-1">
+              <%= f.admin_response ? 'View' : 'Respond' %>
+            </a>
+          </div>
+        </div>
+      </div>
+      <% } %>
+    <% } %>
+  </div>
+  <div class="card-footer"><%include('partials/pagination')%></div>
+</div>

@@ -89,8 +89,25 @@ router.get('/initialize-database-now', async (req, res) => {
     res.write(`✅ Schema file loaded (${schema.length} bytes)\n\n`);
     
     res.write('Creating tables...\n');
-    await pool.query(schema);
-    res.write('✅ Tables created\n\n');
+    // Split schema by CREATE statements and execute each separately
+    const statements = schema
+      .split(/;[\s\n]+/)
+      .map(s => s.trim())
+      .filter(s => s.length > 0 && !s.startsWith('--'));
+    
+    let created = 0;
+    for (const statement of statements) {
+      if (statement.toUpperCase().includes('CREATE TABLE')) {
+        const match = statement.match(/CREATE\s+TABLE\s+(?:IF\s+NOT\s+EXISTS\s+)?(\w+)/i);
+        const tableName = match ? match[1] : 'unknown';
+        await pool.query(statement);
+        res.write(`  ✓ Created table: ${tableName}\n`);
+        created++;
+      } else if (statement.toUpperCase().includes('CREATE INDEX')) {
+        await pool.query(statement);
+      }
+    }
+    res.write(`✅ Created ${created} tables\n\n`);
 
     // Seed roles
     res.write('Seeding roles...\n');

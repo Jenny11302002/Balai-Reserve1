@@ -226,6 +226,16 @@ app.use(attachAudit(db));
 // ── Favicon (browsers request /favicon.ico automatically) ─────────────────
 app.get('/favicon.ico', (req, res) => res.redirect('/favicon.svg'));
 
+// ── Health check endpoint (no database) ────────────────────────────────────
+app.get('/health', (req, res) => {
+  res.json({
+    status: 'ok',
+    timestamp: new Date().toISOString(),
+    database: process.env.DATABASE_URL ? 'postgres' : 'other',
+    hasPostgresEnv: !!process.env.DATABASE_URL,
+  });
+});
+
 // ── Root: show public landing page to everyone (auth status changes nav only) ────
 app.get('/', async (req, res) => {
   try {

@@ -84,7 +84,7 @@ router.get('/google/redirect', (req, res) => {
    ════════════════════════════════════════════════════════════════ */
 
 // GET /auth/login
-router.get('/login', guestOnly, (req, res) => {
+router.get('/login', guestOnly, async (req, res) => {
   res.render('auth/login', {
     title:       'Sign In – Balai-Reserve',
     layout:      'layouts/auth',
@@ -102,7 +102,7 @@ router.post('/login',
     body('email').isEmail().normalizeEmail().withMessage('Enter a valid email address.'),
     body('password').notEmpty().withMessage('Password is required.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.render('auth/login', {
@@ -113,7 +113,7 @@ router.post('/login',
     }
 
     const { email, password } = req.body;
-    const user = db.prepare(`
+    const user = await db.prepare(`
       SELECT u.*, r.name AS role, r.label AS role_label
       FROM users u JOIN roles r ON r.id = u.role_id
       WHERE u.email = ? AND u.is_active = 1
@@ -138,7 +138,7 @@ router.post('/login',
       });
     }
 
-    db.prepare(`UPDATE users SET last_login = datetime('now') WHERE id = ?`).run(user.id);
+    await db.prepare(`UPDATE users SET last_login = datetime('now') WHERE id = ?`).run(user.id);
     req.session.user = buildSessionUser(user);
     return postLoginRedirect(req, res, user.role);
   }
@@ -174,7 +174,7 @@ router.post('/register',
     }),
     body('agree_terms').notEmpty().withMessage('You must agree to the Terms and Conditions.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.render('auth/register', {
@@ -187,7 +187,7 @@ router.post('/register',
     const { first_name, last_name, email, password, phone } = req.body;
 
     // Duplicate email check
-    const existing = db.prepare(`SELECT id, auth_provider FROM users WHERE email = ?`).get(email);
+    const existing = await db.prepare(`SELECT id, auth_provider FROM users WHERE email = ?`).get(email);
     if (existing) {
       const hint = existing.auth_provider === 'google'
         ? 'This email is registered via Google Sign-In. Please use "Continue with Google".'
@@ -199,7 +199,7 @@ router.post('/register',
       });
     }
 
-    const customerRole = db.prepare(`SELECT id FROM roles WHERE name = 'customer'`).get();
+    const customerRole = await db.prepare(`SELECT id FROM roles WHERE name = 'customer'`).get();
     if (!customerRole) {
       return res.render('auth/register', {
         title: 'Create Account – Balai-Reserve', layout: 'layouts/auth', loadFirebase: true,
@@ -212,26 +212,25 @@ router.post('/register',
     const hash = bcrypt.hashSync(password, 12);
     const custCode = 'CUS-' + Date.now().toString().slice(-6);
 
-    const userId = db.transaction(() => {
-      const uid = db.prepare(`
-        INSERT INTO users
-          (role_id, first_name, last_name, email, password_hash, phone, is_active,
-           auth_provider, email_verified)
-        VALUES (?, ?, ?, ?, ?, ?, 1, 'local', 0)
-      `).run(customerRole.id, first_name, last_name, email, hash, phone || '').lastInsertRowid;
+    // For Firestore, we can't use db.transaction() - do sequential operations
+    const userResult = await db.prepare(`
+      INSERT INTO users
+        (role_id, first_name, last_name, email, password_hash, phone, is_active,
+         auth_provider, email_verified)
+      VALUES (?, ?, ?, ?, ?, ?, 1, 'local', 0)
+    `).run(customerRole.id, first_name, last_name, email, hash, phone || '');
 
-      db.prepare(`
-        INSERT INTO customers
-          (user_id, customer_code, first_name, last_name, email, phone,
-           preferred_contact, customer_type, status)
-        VALUES (?, ?, ?, ?, ?, ?, 'email', 'regular', 'active')
-      `).run(uid, custCode, first_name, last_name, email, phone || '');
+    const userId = userResult.lastInsertRowid;
 
-      return uid;
-    })();
+    await db.prepare(`
+      INSERT INTO customers
+        (user_id, customer_code, first_name, last_name, email, phone,
+         preferred_contact, customer_type, status)
+      VALUES (?, ?, ?, ?, ?, ?, 'email', 'regular', 'active')
+    `).run(userId, custCode, first_name, last_name, email, phone || '');
 
     // Build session from what we just inserted
-    const newUser = db.prepare(`
+    const newUser = await db.prepare(`
       SELECT u.*, r.name AS role, r.label AS role_label
       FROM users u JOIN roles r ON r.id = u.role_id WHERE u.id = ?
     `).get(userId);
@@ -279,23 +278,23 @@ router.post('/google/callback', async (req, res) => {
   const lastName  = (name || '').split(' ').slice(1).join(' ') || '';
 
   // ── 3. Find or create user in our DB ──────────────────────────
-  const customerRole = db.prepare(`SELECT id FROM roles WHERE name = 'customer'`).get();
+  const customerRole = await db.prepare(`SELECT id FROM roles WHERE name = 'customer'`).get();
   if (!customerRole) {
     req.session.flash = { error: 'Account creation is temporarily unavailable.' };
     return res.redirect('/auth/login');
   }
 
-  let user = db.prepare(`SELECT u.*, r.name AS role, r.label AS role_label
+  let user = await db.prepare(`SELECT u.*, r.name AS role, r.label AS role_label
     FROM users u JOIN roles r ON r.id = u.role_id
     WHERE u.firebase_uid = ?`).get(uid);
 
   if (!user) {
     // Try matching by email — handles the case where they registered by email first
-    const byEmail = db.prepare(`SELECT * FROM users WHERE email = ?`).get(email);
+    const byEmail = await db.prepare(`SELECT * FROM users WHERE email = ?`).get(email);
 
     if (byEmail) {
       // Link the existing account to this Google identity
-      db.prepare(`
+      await db.prepare(`
         UPDATE users
         SET firebase_uid = ?, auth_provider = 'google',
             email_verified = ?, avatar = COALESCE(NULLIF(avatar,''), ?),
@@ -305,28 +304,29 @@ router.post('/google/callback', async (req, res) => {
     } else {
       // Brand new user — create both users + customers rows
       const custCode = 'CUS-' + Date.now().toString().slice(-6);
-      db.transaction(() => {
-        const newUid = db.prepare(`
-          INSERT INTO users
-            (role_id, first_name, last_name, email, password_hash, avatar,
-             is_active, auth_provider, firebase_uid, email_verified)
-          VALUES (?, ?, ?, ?, '', ?, 1, 'google', ?, ?)
-        `).run(
-          customerRole.id, firstName, lastName, email,
-          picture || '', uid, email_verified ? 1 : 0
-        ).lastInsertRowid;
+      
+      const newUserResult = await db.prepare(`
+        INSERT INTO users
+          (role_id, first_name, last_name, email, password_hash, avatar,
+           is_active, auth_provider, firebase_uid, email_verified)
+        VALUES (?, ?, ?, ?, '', ?, 1, 'google', ?, ?)
+      `).run(
+        customerRole.id, firstName, lastName, email,
+        picture || '', uid, email_verified ? 1 : 0
+      );
 
-        db.prepare(`
-          INSERT INTO customers
-            (user_id, customer_code, first_name, last_name, email, phone,
-             preferred_contact, customer_type, status)
-          VALUES (?, ?, ?, ?, ?, '', 'email', 'regular', 'active')
-        `).run(newUid, custCode, firstName, lastName, email);
-      })();
+      const newUid = newUserResult.lastInsertRowid;
+
+      await db.prepare(`
+        INSERT INTO customers
+          (user_id, customer_code, first_name, last_name, email, phone,
+           preferred_contact, customer_type, status)
+        VALUES (?, ?, ?, ?, ?, '', 'email', 'regular', 'active')
+      `).run(newUid, custCode, firstName, lastName, email);
     }
 
     // Re-fetch with role join
-    user = db.prepare(`SELECT u.*, r.name AS role, r.label AS role_label
+    user = await db.prepare(`SELECT u.*, r.name AS role, r.label AS role_label
       FROM users u JOIN roles r ON r.id = u.role_id
       WHERE u.firebase_uid = ? OR (u.email = ? AND u.firebase_uid IS NULL)
       ORDER BY u.firebase_uid IS NULL ASC LIMIT 1`).get(uid, email);
@@ -346,12 +346,12 @@ router.post('/google/callback', async (req, res) => {
   }
 
   // ── 4. Set session ─────────────────────────────────────────────
-  db.prepare(`UPDATE users SET last_login = datetime('now') WHERE id = ?`).run(user.id);
+  await db.prepare(`UPDATE users SET last_login = datetime('now') WHERE id = ?`).run(user.id);
   req.session.user = buildSessionUser(user);
 
-  const isNewUser = !db.prepare(
+  const isNewUser = !(await db.prepare(
     `SELECT id FROM customers WHERE user_id = ? AND created_at < datetime('now','-5 seconds')`
-  ).get(user.id);
+  ).get(user.id));
 
   req.session.flash = isNewUser
     ? { success: `Welcome to Balai-Reserve, ${firstName}! Your account has been created.` }

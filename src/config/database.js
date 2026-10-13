@@ -1,19 +1,25 @@
 /**
  * Database connection singleton
- * Automatically switches between SQLite (local) and Firestore (production/Vercel)
+ * Automatically switches between SQLite, Postgres, and Firestore
  */
 'use strict';
 
 require('dotenv').config();
 
-// Determine if we're in a serverless environment (Vercel) or have Firebase configured
+// Check for Postgres (priority 1)
+const HAS_POSTGRES = !!process.env.DATABASE_URL;
+
+// Check for Firestore (priority 2)
 const USE_FIRESTORE = process.env.USE_FIRESTORE === 'true' || 
                       process.env.VERCEL === '1' ||
                       (process.env.FIREBASE_ADMIN_PROJECT_ID && 
                        process.env.FIREBASE_ADMIN_CLIENT_EMAIL && 
                        process.env.FIREBASE_ADMIN_PRIVATE_KEY);
 
-if (USE_FIRESTORE) {
+if (HAS_POSTGRES) {
+  console.log('🐘 Using PostgreSQL database');
+  module.exports = require('./database-postgres');
+} else if (USE_FIRESTORE) {
   console.log('🔥 Using Firestore database');
   module.exports = require('./database-firestore');
 } else {

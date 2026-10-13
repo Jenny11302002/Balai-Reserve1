@@ -24,12 +24,13 @@ const { generateReservationQR }    = require('../../../utils/qrGenerator');
 const { notifyAllAdmins, notifyUser } = require('../../../utils/notifications');
 const { validateGcashScreenshot }     = require('../../../utils/gcashValidator');
 const { calculateCottageTotal, validateCottageTimeRange } = require('../../../utils/cottagePricing');
+const { ensureDir } = require('../../../utils/ensureDir');
 
 const router = express.Router();
 
 // ── Multer: payment proof images ────────────────────────────────────────────
 const PROOF_DIR = path.join(process.cwd(), 'uploads', 'payment_proofs');
-if (!fs.existsSync(PROOF_DIR)) fs.mkdirSync(PROOF_DIR, { recursive: true });
+ensureDir(PROOF_DIR);
 
 const proofStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, PROOF_DIR),

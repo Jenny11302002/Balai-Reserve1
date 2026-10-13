@@ -28,8 +28,8 @@ router.get('/', requireAuth, (req, res) => {
   if (type)   { where += ` AND customer_type = ?`; params.push(type); }
   if (status) { where += ` AND status = ?`;        params.push(status); }
 
-  const total     = db.prepare(`SELECT COUNT(*) AS cnt FROM customers ${where}`).get(...params).cnt;
-  const customers = db.prepare(`
+  const total     = await db.prepare(`SELECT COUNT(*) AS cnt FROM customers ${where}`).get(...params).cnt;
+  const customers = await db.prepare(`
     SELECT c.*,
       (SELECT COUNT(*) FROM reservations WHERE customer_id = c.id) AS total_bookings,
       (SELECT MAX(created_at) FROM reservations WHERE customer_id = c.id) AS last_booking
@@ -83,7 +83,7 @@ router.post('/customers',
     if (wantsLogin) {
       if (!email) return renderErr('An email address is required to create a portal login.');
       if (loginPassword !== loginConfirm) return renderErr('The login passwords do not match.');
-      const dupe = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+      const dupe = await db.prepare('SELECT id FROM users WHERE email = ?').get(email);
       if (dupe) return renderErr('A user account with that email already exists. Use a different email or leave the password blank.');
     }
 
@@ -94,16 +94,16 @@ router.post('/customers',
         let userId = null;
 
         if (wantsLogin) {
-          const customerRole = db.prepare(`SELECT id FROM roles WHERE name = 'customer'`).get();
+          const customerRole = await db.prepare(`SELECT id FROM roles WHERE name = 'customer'`).get();
           if (!customerRole) throw new Error('Customer role is missing. Cannot create a login.');
           const hash = bcrypt.hashSync(loginPassword, 12);
-          userId = db.prepare(`
+          userId = await db.prepare(`
             INSERT INTO users (role_id, first_name, last_name, email, password_hash, phone, is_active, auth_provider, email_verified)
             VALUES (?, ?, ?, ?, ?, ?, 1, 'local', 0)
           `).run(customerRole.id, first_name, last_name, email, hash, phone || '').lastInsertRowid;
         }
 
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO customers (user_id, customer_code, first_name, last_name, email, phone, address, preferred_contact, customer_type, notes)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(userId, code, first_name, last_name, email || '', phone || '', address || '', preferred_contact || 'email', customer_type || 'regular', notes || '');
@@ -123,20 +123,20 @@ router.post('/customers',
 
 // GET /crm/customers/:id – Customer profile
 router.get('/customers/:id', requireAuth, (req, res) => {
-  const customer = db.prepare(`SELECT * FROM customers WHERE id=?`).get(req.params.id);
+  const customer = await db.prepare(`SELECT * FROM customers WHERE id=?`).get(req.params.id);
   if (!customer) { req.session.flash = { error: 'Customer not found.' }; return res.redirect('/crm'); }
 
-  const reservations = db.prepare(`SELECT * FROM reservations WHERE customer_id=? ORDER BY created_at DESC LIMIT 10`).all(customer.id);
-  const activities   = db.prepare(`
+  const reservations = await db.prepare(`SELECT * FROM reservations WHERE customer_id=? ORDER BY created_at DESC LIMIT 10`).all(customer.id);
+  const activities   = await db.prepare(`
     SELECT a.*, u.first_name || ' ' || u.last_name AS staff_name
     FROM crm_activities a LEFT JOIN users u ON u.id=a.staff_id
     WHERE a.customer_id=? ORDER BY a.created_at DESC LIMIT 15
   `).all(customer.id);
-  const tickets  = db.prepare(`SELECT * FROM support_tickets WHERE customer_id=? ORDER BY created_at DESC LIMIT 5`).all(customer.id);
-  const feedback = db.prepare(`SELECT f.*, r.booking_ref FROM feedback f JOIN reservations r ON r.id=f.reservation_id WHERE f.customer_id=? ORDER BY f.created_at DESC`).all(customer.id);
-  const calls    = db.prepare(`SELECT sc.*, u.first_name || ' ' || u.last_name AS staff_name FROM sales_calls sc LEFT JOIN users u ON u.id=sc.staff_id WHERE sc.customer_id=? ORDER BY sc.call_date DESC LIMIT 5`).all(customer.id);
+  const tickets  = await db.prepare(`SELECT * FROM support_tickets WHERE customer_id=? ORDER BY created_at DESC LIMIT 5`).all(customer.id);
+  const feedback = await db.prepare(`SELECT f.*, r.booking_ref FROM feedback f JOIN reservations r ON r.id=f.reservation_id WHERE f.customer_id=? ORDER BY f.created_at DESC`).all(customer.id);
+  const calls    = await db.prepare(`SELECT sc.*, u.first_name || ' ' || u.last_name AS staff_name FROM sales_calls sc LEFT JOIN users u ON u.id=sc.staff_id WHERE sc.customer_id=? ORDER BY sc.call_date DESC LIMIT 5`).all(customer.id);
 
-  const totalSpent = db.prepare(`
+  const totalSpent = await db.prepare(`
     SELECT COALESCE(SUM(p.amount),0) AS total
     FROM payments p JOIN reservations r ON r.id=p.reservation_id
     WHERE r.customer_id=? AND p.status IN ('received','verified')
@@ -152,9 +152,9 @@ router.get('/customers/:id', requireAuth, (req, res) => {
 // POST /crm/customers/:id/edit
 router.post('/customers/:id/edit', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
   const { first_name, last_name, email, phone, address, preferred_contact, customer_type, status, notes } = req.body;
-  db.prepare(`
+  await db.prepare(`
     UPDATE customers SET first_name=?, last_name=?, email=?, phone=?, address=?, preferred_contact=?,
-    customer_type=?, status=?, notes=?, updated_at=datetime('now') WHERE id=?
+    customer_type=?, status=?, notes=?, updated_at=NOW() WHERE id=?
   `).run(first_name, last_name, email||'', phone||'', address||'', preferred_contact||'email', customer_type||'regular', status||'active', notes||'', req.params.id);
   req.session.flash = { success: 'Customer updated.' };
   res.redirect(`/crm/customers/${req.params.id}`);
@@ -163,9 +163,9 @@ router.post('/customers/:id/edit', requireAuth, requireRole(...CAN_MANAGE), (req
 // POST /crm/activities – Log a CRM activity
 router.post('/activities', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
   const { customer_id, activity_type, subject, description, follow_up_at } = req.body;
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO crm_activities (customer_id, activity_type, subject, description, staff_id, status, completed_at, follow_up_at)
-    VALUES (?, ?, ?, ?, ?, 'completed', datetime('now'), ?)
+    VALUES (?, ?, ?, ?, ?, 'completed', NOW(), ?)
   `).run(customer_id, activity_type, subject || '', description || '', req.session.user.id, follow_up_at || null);
   req.session.flash = { success: 'Activity logged.' };
   res.redirect(`/crm/customers/${customer_id}`);
@@ -185,8 +185,8 @@ router.get('/calls', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
   }
   if (status) { where += ` AND sc.status = ?`; params.push(status); }
 
-  const total = db.prepare(`SELECT COUNT(*) AS cnt FROM sales_calls sc JOIN customers c ON c.id=sc.customer_id ${where}`).get(...params).cnt;
-  const calls = db.prepare(`
+  const total = await db.prepare(`SELECT COUNT(*) AS cnt FROM sales_calls sc JOIN customers c ON c.id=sc.customer_id ${where}`).get(...params).cnt;
+  const calls = await db.prepare(`
     SELECT sc.*, c.first_name || ' ' || c.last_name AS customer_name,
            u.first_name || ' ' || u.last_name AS staff_name
     FROM sales_calls sc
@@ -207,7 +207,7 @@ router.get('/calls', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
 // POST /crm/calls
 router.post('/calls', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
   const { customer_id, call_date, call_time, purpose, result, notes, follow_up_at, status } = req.body;
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO sales_calls (customer_id, staff_id, call_date, call_time, purpose, result, notes, follow_up_at, status)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(customer_id, req.session.user.id, call_date, call_time||null, purpose, result||'', notes||'', follow_up_at||null, status||'completed');
@@ -228,8 +228,8 @@ router.get('/tickets', requireAuth, (req, res) => {
   if (status)   { where += ` AND t.status = ?`;   params.push(status); }
   if (priority) { where += ` AND t.priority = ?`; params.push(priority); }
 
-  const total   = db.prepare(`SELECT COUNT(*) AS cnt FROM support_tickets t ${where}`).get(...params).cnt;
-  const tickets = db.prepare(`
+  const total   = await db.prepare(`SELECT COUNT(*) AS cnt FROM support_tickets t ${where}`).get(...params).cnt;
+  const tickets = await db.prepare(`
     SELECT t.*, c.first_name || ' ' || c.last_name AS customer_name,
            u.first_name || ' ' || u.last_name AS assigned_name
     FROM support_tickets t

@@ -28,8 +28,8 @@ router.get('/', requireAuth, (req, res) => {
   if (from)   { where += ` AND e.event_date >= ?`; params.push(from); }
   if (to)     { where += ` AND e.event_date <= ?`; params.push(to); }
 
-  const total  = db.prepare(`SELECT COUNT(*) AS cnt FROM events e JOIN customers c ON c.id=e.customer_id ${where}`).get(...params).cnt;
-  const events = db.prepare(`
+  const total  = await db.prepare(`SELECT COUNT(*) AS cnt FROM events e JOIN customers c ON c.id=e.customer_id ${where}`).get(...params).cnt;
+  const events = await db.prepare(`
     SELECT e.*, c.first_name || ' ' || c.last_name AS customer_name,
            v.name AS venue_name, ep.name AS package_name
     FROM events e
@@ -55,9 +55,9 @@ router.get('/', requireAuth, (req, res) => {
 
 // GET /events/new
 router.get('/new', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
-  const customers = db.prepare(`SELECT id, customer_code, first_name, last_name FROM customers WHERE status='active' ORDER BY first_name`).all();
-  const venues    = db.prepare(`SELECT id, name, capacity, price FROM venues WHERE is_active=1 ORDER BY name`).all();
-  const packages  = db.prepare(`SELECT * FROM event_packages WHERE is_active=1 ORDER BY name`).all();
+  const customers = await db.prepare(`SELECT id, customer_code, first_name, last_name FROM customers WHERE status='active' ORDER BY first_name`).all();
+  const venues    = await db.prepare(`SELECT id, name, capacity, price FROM venues WHERE is_active=1 ORDER BY name`).all();
+  const packages  = await db.prepare(`SELECT * FROM event_packages WHERE is_active=1 ORDER BY name`).all();
   const eventTypes= ['wedding','birthday','debut','corporate','meeting','party','family_gathering','other'];
   res.render('events/form', {
     title: 'New Event', layout: 'layouts/main',
@@ -79,9 +79,9 @@ router.post('/',
   ],
   (req, res) => {
     const errors = validationResult(req);
-    const customers = db.prepare(`SELECT id, customer_code, first_name, last_name FROM customers WHERE status='active' ORDER BY first_name`).all();
-    const venues    = db.prepare(`SELECT id, name, capacity, price FROM venues WHERE is_active=1 ORDER BY name`).all();
-    const packages  = db.prepare(`SELECT * FROM event_packages WHERE is_active=1 ORDER BY name`).all();
+    const customers = await db.prepare(`SELECT id, customer_code, first_name, last_name FROM customers WHERE status='active' ORDER BY first_name`).all();
+    const venues    = await db.prepare(`SELECT id, name, capacity, price FROM venues WHERE is_active=1 ORDER BY name`).all();
+    const packages  = await db.prepare(`SELECT * FROM event_packages WHERE is_active=1 ORDER BY name`).all();
     const eventTypes= ['wedding','birthday','debut','corporate','meeting','party','family_gathering','other'];
 
     if (!errors.isEmpty()) {
@@ -95,7 +95,7 @@ router.post('/',
 
     // Check venue availability
     if (venue_id) {
-      const conflict = db.prepare(`
+      const conflict = await db.prepare(`
         SELECT id FROM events
         WHERE venue_id=? AND event_date=? AND status NOT IN ('cancelled','completed')
           AND start_time < ? AND end_time > ?
@@ -106,7 +106,7 @@ router.post('/',
       }
     }
 
-    const id = db.prepare(`
+    const id = await db.prepare(`
       INSERT INTO events
         (reservation_id, customer_id, event_package_id, venue_id,
          event_name, event_type, event_date, start_time, end_time,
@@ -126,7 +126,7 @@ router.post('/',
 
 // GET /events/:id
 router.get('/:id', requireAuth, (req, res) => {
-  const event = db.prepare(`
+  const event = await db.prepare(`
     SELECT e.*, c.first_name || ' ' || c.last_name AS customer_name,
            c.phone AS customer_phone, v.name AS venue_name, ep.name AS package_name
     FROM events e
@@ -137,7 +137,7 @@ router.get('/:id', requireAuth, (req, res) => {
   `).get(req.params.id);
   if (!event) { req.session.flash = { error: 'Event not found.' }; return res.redirect('/events'); }
 
-  const assignments = db.prepare(`
+  const assignments = await db.prepare(`
     SELECT ea.*, eq.name AS equipment_name
     FROM equipment_assignments ea JOIN equipment eq ON eq.id=ea.equipment_id
     WHERE ea.event_id=?
@@ -152,7 +152,7 @@ router.get('/:id', requireAuth, (req, res) => {
 // POST /events/:id/status
 router.post('/:id/status', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
   const { status } = req.body;
-  db.prepare(`UPDATE events SET status=?, updated_at=datetime('now') WHERE id=?`).run(status, req.params.id);
+  await db.prepare(`UPDATE events SET status=?, updated_at=NOW() WHERE id=?`).run(status, req.params.id);
   req.session.flash = { success: `Event status updated to ${status}.` };
   res.redirect(`/events/${req.params.id}`);
 });

@@ -21,18 +21,18 @@ router.get('/', requireAuth, (req, res) => {
   if (category) { where += ` AND i.category_id = ?`; params.push(category); }
   if (alert === 'low') where += ` AND i.available_qty <= i.reorder_level`;
 
-  const items = db.prepare(`
+  const items = await db.prepare(`
     SELECT i.*, c.name AS category_name
     FROM inventory_items i JOIN inventory_categories c ON c.id=i.category_id
     ${where}
     ORDER BY c.name, i.name
   `).all(...params);
 
-  const categories = db.prepare(`SELECT * FROM inventory_categories ORDER BY name`).all();
-  const alertCount = db.prepare(`SELECT COUNT(*) AS cnt FROM inventory_items WHERE available_qty <= reorder_level AND is_active=1`).get().cnt;
+  const categories = await db.prepare(`SELECT * FROM inventory_categories ORDER BY name`).all();
+  const alertCount = await db.prepare(`SELECT COUNT(*) AS cnt FROM inventory_items WHERE available_qty <= reorder_level AND is_active=1`).get().cnt;
 
   // Equipment list
-  const equipment = db.prepare(`
+  const equipment = await db.prepare(`
     SELECT e.*, c.name AS category_name
     FROM equipment e LEFT JOIN inventory_categories c ON c.id=e.category_id
     WHERE e.is_active=1 ORDER BY e.name
@@ -48,7 +48,7 @@ router.get('/', requireAuth, (req, res) => {
 
 // GET /inventory/new
 router.get('/new', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
-  const categories = db.prepare(`SELECT * FROM inventory_categories ORDER BY name`).all();
+  const categories = await db.prepare(`SELECT * FROM inventory_categories ORDER BY name`).all();
   res.render('inventory/form', { title: 'Add Inventory Item', layout: 'layouts/main', item: null, categories, errors: [], old: {} });
 });
 
@@ -63,7 +63,7 @@ router.post('/',
   ],
   (req, res) => {
     const errors = validationResult(req);
-    const categories = db.prepare(`SELECT * FROM inventory_categories ORDER BY name`).all();
+    const categories = await db.prepare(`SELECT * FROM inventory_categories ORDER BY name`).all();
     if (!errors.isEmpty()) return res.render('inventory/form', { title: 'Add Item', layout: 'layouts/main', item: null, categories, errors: errors.array(), old: req.body });
 
     const { name, description, category_id, unit, total_qty, reorder_level, location } = req.body;
@@ -71,7 +71,7 @@ router.post('/',
     const safeReorderLevel = parseInt(reorder_level || '5', 10);
     const code = `ITEM-${Date.now()}`;
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO inventory_items (category_id, item_code, name, description, unit, total_qty, available_qty, reserved_qty, damaged_qty, reorder_level, location)
       VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?)
     `).run(category_id, code, name, description || '', unit || 'pcs', qty, qty, safeReorderLevel, location || '');
@@ -86,7 +86,7 @@ router.post('/:id/adjust', requireAuth, requireRole(...CAN_MANAGE), (req, res) =
   const { adjust_type, quantity, notes } = req.body;
   const validAdjustTypes = new Set(['add', 'remove', 'damage', 'repair']);
   const qty = Number.parseInt(quantity, 10);
-  const item = db.prepare(`SELECT * FROM inventory_items WHERE id=?`).get(req.params.id);
+  const item = await db.prepare(`SELECT * FROM inventory_items WHERE id=?`).get(req.params.id);
 
   if (!item || !validAdjustTypes.has(String(adjust_type || '').trim()) || !Number.isInteger(qty) || qty <= 0) {
     req.session.flash = { error: 'Invalid adjustment.' };
@@ -116,8 +116,8 @@ router.post('/:id/adjust', requireAuth, requireRole(...CAN_MANAGE), (req, res) =
       newAvail += repaired;
     }
 
-    db.prepare(`UPDATE inventory_items SET available_qty=?, damaged_qty=?, total_qty=?, updated_at=datetime('now') WHERE id=?`).run(newAvail, newDamaged, newTotal, item.id);
-    db.prepare(`INSERT INTO inventory_transactions (item_id, transaction_type, quantity, performed_by, notes) VALUES (?,?,?,?,?)`).run(item.id, adjust_type, qty, req.session.user.id, notes || '');
+    await db.prepare(`UPDATE inventory_items SET available_qty=?, damaged_qty=?, total_qty=?, updated_at=NOW() WHERE id=?`).run(newAvail, newDamaged, newTotal, item.id);
+    await db.prepare(`INSERT INTO inventory_transactions (item_id, transaction_type, quantity, performed_by, notes) VALUES (?,?,?,?,?)`).run(item.id, adjust_type, qty, req.session.user.id, notes || '');
   })();
 
   req.session.flash = { success: 'Inventory adjusted successfully.' };
@@ -126,7 +126,7 @@ router.post('/:id/adjust', requireAuth, requireRole(...CAN_MANAGE), (req, res) =
 
 // GET /inventory/equipment/new
 router.get('/equipment/new', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
-  const categories = db.prepare(`SELECT * FROM inventory_categories ORDER BY name`).all();
+  const categories = await db.prepare(`SELECT * FROM inventory_categories ORDER BY name`).all();
   res.render('inventory/equipment-form', { title: 'Add Equipment', layout: 'layouts/main', equipment: null, categories, errors: [], old: {} });
 });
 
@@ -140,14 +140,14 @@ router.post('/equipment',
   ],
   (req, res) => {
     const errors = validationResult(req);
-    const categories = db.prepare(`SELECT * FROM inventory_categories ORDER BY name`).all();
+    const categories = await db.prepare(`SELECT * FROM inventory_categories ORDER BY name`).all();
     if (!errors.isEmpty()) return res.render('inventory/equipment-form', { title: 'Add Equipment', layout: 'layouts/main', equipment: null, categories, errors: errors.array(), old: req.body });
 
     const { name, description, category_id, quantity, condition } = req.body;
     const safeQuantity = parseInt(quantity, 10);
     const code = `EQ-${Date.now()}`;
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO equipment (category_id, equipment_code, name, description, quantity, condition, available_qty)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(category_id || null, code, name, description || '', safeQuantity, condition || 'good', safeQuantity);

@@ -29,11 +29,11 @@ router.get('/', requireAuth, ADMIN_ONLY, (req, res) => {
   if (status === 'active')   where += ` AND u.is_active = 1`;
   if (status === 'inactive') where += ` AND u.is_active = 0`;
 
-  const total = db.prepare(`
+  const total = await db.prepare(`
     SELECT COUNT(*) AS cnt FROM users u JOIN roles r ON r.id=u.role_id ${where}
   `).get(...params).cnt;
 
-  const users = db.prepare(`
+  const users = await db.prepare(`
     SELECT u.*, r.name AS role_name, r.label AS role_label
     FROM users u JOIN roles r ON r.id=u.role_id
     ${where}
@@ -41,7 +41,7 @@ router.get('/', requireAuth, ADMIN_ONLY, (req, res) => {
     LIMIT ? OFFSET ?
   `).all(...params, limit, offset);
 
-  const roles = db.prepare(`SELECT * FROM roles ORDER BY name`).all();
+  const roles = await db.prepare(`SELECT * FROM roles ORDER BY name`).all();
 
   res.render('users/index', {
     title:  'User Management – Balai-Reserve',
@@ -55,7 +55,7 @@ router.get('/', requireAuth, ADMIN_ONLY, (req, res) => {
 // GET /users/new
 router.get('/new', requireAuth, ADMIN_ONLY, (req, res) => {
   // Exclude 'admin' and 'customer' — only one admin allowed, customers are self-registered
-  const roles = db.prepare(`SELECT * FROM roles WHERE name NOT IN ('customer','admin') ORDER BY name`).all();
+  const roles = await db.prepare(`SELECT * FROM roles WHERE name NOT IN ('customer','admin') ORDER BY name`).all();
   res.render('users/form', {
     title:  'Add Staff User',
     layout: 'layouts/main',
@@ -79,7 +79,7 @@ router.post('/',
   ],
   (req, res) => {
     const errors = validationResult(req);
-    const roles  = db.prepare(`SELECT * FROM roles WHERE name NOT IN ('customer','admin') ORDER BY name`).all();
+    const roles  = await db.prepare(`SELECT * FROM roles WHERE name NOT IN ('customer','admin') ORDER BY name`).all();
     if (!errors.isEmpty()) {
       return res.render('users/form', {
         title: 'Add Staff User', layout: 'layouts/main',
@@ -90,7 +90,7 @@ router.post('/',
     const { first_name, last_name, email, role_id, password, phone } = req.body;
 
     // Check email uniqueness
-    const existing = db.prepare(`SELECT id FROM users WHERE email = ?`).get(email);
+    const existing = await db.prepare(`SELECT id FROM users WHERE email = ?`).get(email);
     if (existing) {
       return res.render('users/form', {
         title: 'Add Staff User', layout: 'layouts/main',
@@ -100,7 +100,7 @@ router.post('/',
     }
 
     const hash = bcrypt.hashSync(password, 12);
-    const id   = db.prepare(`
+    const id   = await db.prepare(`
       INSERT INTO users (role_id, first_name, last_name, email, password_hash, phone, is_active)
       VALUES (?, ?, ?, ?, ?, ?, 1)
     `).run(role_id, first_name, last_name, email, hash, phone || '').lastInsertRowid;
@@ -113,7 +113,7 @@ router.post('/',
 
 // GET /users/:id/edit
 router.get('/:id/edit', requireAuth, ADMIN_ONLY, (req, res) => {
-  const user  = db.prepare(`SELECT u.*, r.name AS role_name FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?`).get(req.params.id);
+  const user  = await db.prepare(`SELECT u.*, r.name AS role_name FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?`).get(req.params.id);
   if (!user) { req.session.flash = { error: 'User not found.' }; return res.redirect('/users'); }
 
   // Redirect admin to their own profile page
@@ -122,7 +122,7 @@ router.get('/:id/edit', requireAuth, ADMIN_ONLY, (req, res) => {
     return res.redirect('/profile');
   }
 
-  const roles = db.prepare(`SELECT * FROM roles WHERE name NOT IN ('customer','admin') ORDER BY name`).all();
+  const roles = await db.prepare(`SELECT * FROM roles WHERE name NOT IN ('customer','admin') ORDER BY name`).all();
   res.render('users/form', {
     title:  `Edit ${user.first_name} ${user.last_name}`,
     layout: 'layouts/main',
@@ -140,8 +140,8 @@ router.post('/:id/edit',
     body('role_id').isInt().withMessage('Select a role.'),
   ],
   (req, res) => {
-    const old    = db.prepare(`SELECT * FROM users WHERE id=?`).get(req.params.id);
-    const roles  = db.prepare(`SELECT * FROM roles WHERE name NOT IN ('customer','admin') ORDER BY name`).all();
+    const old    = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.params.id);
+    const roles  = await db.prepare(`SELECT * FROM roles WHERE name NOT IN ('customer','admin') ORDER BY name`).all();
     const errors = validationResult(req);
 
     if (!errors.isEmpty()) {
@@ -154,7 +154,7 @@ router.post('/:id/edit',
     const { first_name, last_name, email, role_id, phone } = req.body;
 
     // Check email uniqueness (excluding self)
-    const dup = db.prepare(`SELECT id FROM users WHERE email=? AND id!=?`).get(email, req.params.id);
+    const dup = await db.prepare(`SELECT id FROM users WHERE email=? AND id!=?`).get(email, req.params.id);
     if (dup) {
       return res.render('users/form', {
         title: 'Edit User', layout: 'layouts/main', user: old, roles,
@@ -162,7 +162,7 @@ router.post('/:id/edit',
       });
     }
 
-    db.prepare(`UPDATE users SET first_name=?,last_name=?,email=?,role_id=?,phone=?,updated_at=datetime('now') WHERE id=?`)
+    await db.prepare(`UPDATE users SET first_name=?,last_name=?,email=?,role_id=?,phone=?,updated_at=NOW() WHERE id=?`)
       .run(first_name, last_name, email, role_id, phone || '', req.params.id);
 
     req.audit('update', 'users', req.params.id, { email: old.email, role_id: old.role_id }, { email, role_id });
@@ -177,11 +177,11 @@ router.post('/:id/toggle', requireAuth, ADMIN_ONLY, (req, res) => {
     req.session.flash = { error: 'You cannot deactivate your own account.' };
     return res.redirect('/users');
   }
-  const user = db.prepare(`SELECT id, is_active, first_name, last_name FROM users WHERE id=?`).get(req.params.id);
+  const user = await db.prepare(`SELECT id, is_active, first_name, last_name FROM users WHERE id=?`).get(req.params.id);
   if (!user) { req.session.flash = { error: 'User not found.' }; return res.redirect('/users'); }
 
   const newActive = user.is_active ? 0 : 1;
-  db.prepare(`UPDATE users SET is_active=?, updated_at=datetime('now') WHERE id=?`).run(newActive, user.id);
+  await db.prepare(`UPDATE users SET is_active=?, updated_at=NOW() WHERE id=?`).run(newActive, user.id);
   req.audit('toggle_active', 'users', user.id, { is_active: user.is_active }, { is_active: newActive });
 
   req.session.flash = {
@@ -192,10 +192,10 @@ router.post('/:id/toggle', requireAuth, ADMIN_ONLY, (req, res) => {
 
 // GET /users/:id  — view profile
 router.get('/:id', requireAuth, ADMIN_ONLY, (req, res) => {
-  const user = db.prepare(`SELECT u.*, r.name AS role_name, r.label AS role_label FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?`).get(req.params.id);
+  const user = await db.prepare(`SELECT u.*, r.name AS role_name, r.label AS role_label FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?`).get(req.params.id);
   if (!user) { req.session.flash = { error: 'User not found.' }; return res.redirect('/users'); }
 
-  const recentAudit = db.prepare(`SELECT * FROM audit_logs WHERE user_id=? ORDER BY created_at DESC LIMIT 10`).all(user.id);
+  const recentAudit = await db.prepare(`SELECT * FROM audit_logs WHERE user_id=? ORDER BY created_at DESC LIMIT 10`).all(user.id);
 
   res.render('users/show', {
     title:  `${user.first_name} ${user.last_name}`,

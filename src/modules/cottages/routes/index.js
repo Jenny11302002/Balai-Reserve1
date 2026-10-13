@@ -58,8 +58,8 @@ router.get('/', requireAuth, (req, res) => {
   if (search) { where += ` AND (name LIKE ? OR description LIKE ?)`; params.push(`%${search}%`, `%${search}%`); }
   if (status) { where += ` AND status = ?`; params.push(status); }
 
-  const total    = db.prepare(`SELECT COUNT(*) AS cnt FROM cottages ${where}`).get(...params).cnt;
-  const cottages = db.prepare(`SELECT * FROM cottages ${where} ORDER BY name LIMIT ? OFFSET ?`).all(...params, limit, offset);
+  const total    = await db.prepare(`SELECT COUNT(*) AS cnt FROM cottages ${where}`).get(...params).cnt;
+  const cottages = await db.prepare(`SELECT * FROM cottages ${where} ORDER BY name LIMIT ? OFFSET ?`).all(...params, limit, offset);
 
   // Attach parsed images
   for (const c of cottages) c.imagesList = parseImages(c.images);
@@ -67,7 +67,7 @@ router.get('/', requireAuth, (req, res) => {
   const statuses = ['available', 'reserved', 'occupied', 'maintenance', 'unavailable'];
   const counts   = {};
   for (const s of statuses) {
-    counts[s] = db.prepare(`SELECT COUNT(*) AS c FROM cottages WHERE status=? AND is_active=1`).get(s).c;
+    counts[s] = await db.prepare(`SELECT COUNT(*) AS c FROM cottages WHERE status=? AND is_active=1`).get(s).c;
   }
 
   res.render('cottages/index', {
@@ -119,7 +119,7 @@ router.post('/',
     const imagePaths = (req.files || []).map(f => `/uploads/cottages/${f.filename}`);
     const imagesJson = JSON.stringify(imagePaths);
 
-    const id = db.prepare(`
+    const id = await db.prepare(`
       INSERT INTO cottages (name, description, capacity, price, amenities, images, status)
       VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(name, description || '', capacity, price, amenitiesJson, imagesJson, status || 'available').lastInsertRowid;
@@ -132,13 +132,13 @@ router.post('/',
 
 // GET /cottages/:id
 router.get('/:id', requireAuth, (req, res) => {
-  const cottage = db.prepare(`SELECT * FROM cottages WHERE id = ?`).get(req.params.id);
+  const cottage = await db.prepare(`SELECT * FROM cottages WHERE id = ?`).get(req.params.id);
   if (!cottage) { req.session.flash = { error: 'Cottage not found.' }; return res.redirect('/cottages'); }
 
   try { cottage.amenitiesList = JSON.parse(cottage.amenities || '[]'); } catch { cottage.amenitiesList = []; }
   cottage.imagesList = parseImages(cottage.images);
 
-  const reservations = db.prepare(`
+  const reservations = await db.prepare(`
     SELECT r.*, c.first_name || ' ' || c.last_name AS customer_name
     FROM reservations r
     JOIN reservation_items ri ON ri.reservation_id = r.id
@@ -148,7 +148,7 @@ router.get('/:id', requireAuth, (req, res) => {
   `).all(cottage.id);
 
   const today = new Date().toISOString().slice(0, 10);
-  const activeRes = db.prepare(`
+  const activeRes = await db.prepare(`
     SELECT r.*, c.first_name || ' ' || c.last_name AS customer_name
     FROM reservations r
     JOIN reservation_items ri ON ri.reservation_id = r.id
@@ -167,7 +167,7 @@ router.get('/:id', requireAuth, (req, res) => {
 
 // GET /cottages/:id/edit
 router.get('/:id/edit', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
-  const cottage = db.prepare(`SELECT * FROM cottages WHERE id = ?`).get(req.params.id);
+  const cottage = await db.prepare(`SELECT * FROM cottages WHERE id = ?`).get(req.params.id);
   if (!cottage) { req.session.flash = { error: 'Cottage not found.' }; return res.redirect('/cottages'); }
   try { cottage.amenitiesStr = JSON.parse(cottage.amenities || '[]').join(', '); } catch { cottage.amenitiesStr = ''; }
   cottage.imagesList = parseImages(cottage.images);
@@ -188,7 +188,7 @@ router.post('/:id/edit',
     body('price').isFloat({ min: 0 }).withMessage('Enter a valid price.'),
   ],
   (req, res) => {
-    const old    = db.prepare(`SELECT * FROM cottages WHERE id = ?`).get(req.params.id);
+    const old    = await db.prepare(`SELECT * FROM cottages WHERE id = ?`).get(req.params.id);
     const errors = validationResult(req);
 
     if (!errors.isEmpty()) {
@@ -225,8 +225,8 @@ router.post('/:id/edit',
     const allImages  = [...keepImages, ...newImages];
     const imagesJson = JSON.stringify(allImages);
 
-    db.prepare(`
-      UPDATE cottages SET name=?, description=?, capacity=?, price=?, amenities=?, images=?, status=?, updated_at=datetime('now')
+    await db.prepare(`
+      UPDATE cottages SET name=?, description=?, capacity=?, price=?, amenities=?, images=?, status=?, updated_at=NOW()
       WHERE id=?
     `).run(name, description || '', capacity, price, amenitiesJson, imagesJson, status || 'available', req.params.id);
 
@@ -239,8 +239,8 @@ router.post('/:id/edit',
 // POST /cottages/:id/status — quick status toggle
 router.post('/:id/status', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
   const { status } = req.body;
-  const old = db.prepare(`SELECT status FROM cottages WHERE id=?`).get(req.params.id);
-  db.prepare(`UPDATE cottages SET status=?, updated_at=datetime('now') WHERE id=?`).run(status, req.params.id);
+  const old = await db.prepare(`SELECT status FROM cottages WHERE id=?`).get(req.params.id);
+  await db.prepare(`UPDATE cottages SET status=?, updated_at=NOW() WHERE id=?`).run(status, req.params.id);
   req.audit('status_change', 'cottages', req.params.id, old, { status });
   req.session.flash = { success: 'Cottage status updated.' };
   res.redirect(req.get('Referer') || '/cottages');

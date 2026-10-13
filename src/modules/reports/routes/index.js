@@ -12,7 +12,7 @@ const router = express.Router();
 
 // ── Helper: resort branding for report headers/footers ──────────────────────
 function getResortInfo() {
-  const rows = db.prepare(
+  const rows = await db.prepare(
     "SELECT key, value FROM settings WHERE key IN ('resort_name','resort_address','resort_phone','resort_email')"
   ).all();
   const s = {};
@@ -48,12 +48,12 @@ router.get('/sales', requireAuth, requireRole('admin'), (req, res) => {
   const toDate   = to   || today;
 
   let groupBy, labelFormat;
-  if (type === 'daily')   { groupBy = `DATE(payment_date)`;           labelFormat = 'Date'; }
+  if (type === 'daily')   { groupBy = `CAST(payment_date AS DATE)`;           labelFormat = 'Date'; }
   else if (type === 'weekly') { groupBy = `strftime('%Y-W%W', payment_date)`; labelFormat = 'Week'; }
   else if (type === 'yearly') { groupBy = `strftime('%Y', payment_date)`;     labelFormat = 'Year'; }
-  else                    { groupBy = `strftime('%Y-%m', payment_date)`;  labelFormat = 'Month'; } // monthly default
+  else                    { groupBy = `TO_CHAR(payment_date, 'YYYY-MM')`;  labelFormat = 'Month'; } // monthly default
 
-  const salesData = db.prepare(`
+  const salesData = await db.prepare(`
     SELECT ${groupBy} AS period,
            SUM(amount) AS total,
            COUNT(*) AS transactions
@@ -68,7 +68,7 @@ router.get('/sales', requireAuth, requireRole('admin'), (req, res) => {
   const totalTxns    = salesData.reduce((s, r) => s + r.transactions, 0);
 
   // Revenue by type
-  const byType = db.prepare(`
+  const byType = await db.prepare(`
     SELECT r.reservation_type, SUM(p.amount) AS total
     FROM payments p JOIN reservations r ON r.id=p.reservation_id
     WHERE p.status IN ('received','verified') AND p.payment_date >= ? AND p.payment_date <= ?
@@ -97,20 +97,20 @@ router.get('/reservations', requireAuth, requireRole('admin','staff'), (req, res
   if (status) { where += ` AND r.status = ?`;            params.push(status); }
   if (type)   { where += ` AND r.reservation_type = ?`;  params.push(type); }
 
-  const reservations = db.prepare(`
+  const reservations = await db.prepare(`
     SELECT r.*, c.first_name || ' ' || c.last_name AS customer_name
     FROM reservations r JOIN customers c ON c.id=r.customer_id
     ${where}
     ORDER BY r.created_at DESC
   `).all(...params);
 
-  const statusSummary = db.prepare(`
+  const statusSummary = await db.prepare(`
     SELECT status, COUNT(*) AS cnt FROM reservations
     WHERE created_at >= ? AND created_at <= ?
     GROUP BY status
   `).all(fromDate, toDate + ' 23:59:59');
 
-  const typeSummary = db.prepare(`
+  const typeSummary = await db.prepare(`
     SELECT reservation_type, COUNT(*) AS cnt FROM reservations
     WHERE created_at >= ? AND created_at <= ?
     GROUP BY reservation_type
@@ -131,14 +131,14 @@ router.get('/events', requireAuth, requireRole('admin','staff'), (req, res) => {
   const fromDate = from || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
   const toDate   = to   || today;
 
-  const events = db.prepare(`
+  const events = await db.prepare(`
     SELECT e.*, c.first_name || ' ' || c.last_name AS customer_name, v.name AS venue_name
     FROM events e JOIN customers c ON c.id=e.customer_id LEFT JOIN venues v ON v.id=e.venue_id
     WHERE e.event_date >= ? AND e.event_date <= ?
     ORDER BY e.event_date DESC
   `).all(fromDate, toDate);
 
-  const byType = db.prepare(`
+  const byType = await db.prepare(`
     SELECT event_type, COUNT(*) AS cnt, SUM(total_cost) AS revenue
     FROM events WHERE event_date >= ? AND event_date <= ?
     GROUP BY event_type
@@ -169,7 +169,7 @@ router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req,
   let headers  = [];
 
   if (reportType === 'sales') {
-    rows     = db.prepare(`
+    rows     = await db.prepare(`
       SELECT p.*, r.booking_ref, r.reservation_type,
              c.first_name || ' ' || c.last_name AS customer
       FROM payments p
@@ -181,11 +181,11 @@ router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req,
     headers  = ['id','booking_ref','customer','reservation_type','amount','payment_method','payment_date','payment_type','status'];
     filename = `sales-${fromDate}-to-${toDate}`;
   } else if (reportType === 'reservations') {
-    rows     = db.prepare(`SELECT r.*, c.first_name || ' ' || c.last_name AS customer FROM reservations r JOIN customers c ON c.id=r.customer_id WHERE r.created_at >= ? AND r.created_at <= ? ORDER BY r.created_at`).all(fromDate, toDate + ' 23:59:59');
+    rows     = await db.prepare(`SELECT r.*, c.first_name || ' ' || c.last_name AS customer FROM reservations r JOIN customers c ON c.id=r.customer_id WHERE r.created_at >= ? AND r.created_at <= ? ORDER BY r.created_at`).all(fromDate, toDate + ' 23:59:59');
     headers  = ['id','booking_ref','customer','reservation_type','check_in_date','check_out_date','event_date','num_guests','total_amount','status','payment_status','created_at'];
     filename = `reservations-${fromDate}-to-${toDate}`;
   } else if (reportType === 'events') {
-    rows     = db.prepare(`SELECT e.*, c.first_name || ' ' || c.last_name AS customer FROM events e JOIN customers c ON c.id=e.customer_id WHERE e.event_date >= ? AND e.event_date <= ? ORDER BY e.event_date`).all(fromDate, toDate);
+    rows     = await db.prepare(`SELECT e.*, c.first_name || ' ' || c.last_name AS customer FROM events e JOIN customers c ON c.id=e.customer_id WHERE e.event_date >= ? AND e.event_date <= ? ORDER BY e.event_date`).all(fromDate, toDate);
     headers  = ['id','event_name','customer','event_type','event_date','start_time','end_time','num_attendees','total_cost','payment_status','status'];
     filename = `events-${fromDate}-to-${toDate}`;
   } else {

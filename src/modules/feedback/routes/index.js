@@ -23,11 +23,11 @@ router.get('/', requireAuth, requireRole(...CAN_RESPOND), (req, res) => {
   if (rating)   { where += ` AND f.rating = ?`;    params.push(parseInt(rating)); }
   if (category) { where += ` AND f.category = ?`;  params.push(category); }
 
-  const total = db.prepare(`
+  const total = await db.prepare(`
     SELECT COUNT(*) AS cnt FROM feedback f ${where}
   `).get(...params).cnt;
 
-  const feedbackList = db.prepare(`
+  const feedbackList = await db.prepare(`
     SELECT f.*,
            c.first_name || ' ' || c.last_name AS customer_name,
            r.booking_ref,
@@ -43,7 +43,7 @@ router.get('/', requireAuth, requireRole(...CAN_RESPOND), (req, res) => {
   `).all(...params, limit, offset);
 
   // Summary stats
-  const summary = db.prepare(`
+  const summary = await db.prepare(`
     SELECT
       COUNT(*)                            AS total,
       ROUND(AVG(rating), 1)              AS avg_rating,
@@ -68,7 +68,7 @@ router.get('/', requireAuth, requireRole(...CAN_RESPOND), (req, res) => {
 
 // GET /feedback/:id
 router.get('/:id', requireAuth, requireRole(...CAN_RESPOND), (req, res) => {
-  const fb = db.prepare(`
+  const fb = await db.prepare(`
     SELECT f.*,
            c.first_name || ' ' || c.last_name AS customer_name,
            c.email AS customer_email, c.id AS cust_id,
@@ -87,7 +87,7 @@ router.get('/:id', requireAuth, requireRole(...CAN_RESPOND), (req, res) => {
   }
 
   // Other feedback from same customer
-  const otherFeedback = db.prepare(`
+  const otherFeedback = await db.prepare(`
     SELECT f.*, r.booking_ref
     FROM feedback f JOIN reservations r ON r.id = f.reservation_id
     WHERE f.customer_id = ? AND f.id != ?
@@ -115,11 +115,11 @@ router.post('/:id/respond',
       return res.redirect(`/feedback/${req.params.id}`);
     }
 
-    db.prepare(`
+    await db.prepare(`
       UPDATE feedback
       SET admin_response = ?,
           responded_by   = ?,
-          responded_at   = datetime('now')
+          responded_at   = NOW()
       WHERE id = ?
     `).run(req.body.admin_response.trim(), req.session.user.id, req.params.id);
 
@@ -131,9 +131,9 @@ router.post('/:id/respond',
 
 // POST /feedback/:id/toggle-public — show/hide from public view
 router.post('/:id/toggle-public', requireAuth, requireRole('admin'), (req, res) => {
-  const fb = db.prepare(`SELECT id, is_public FROM feedback WHERE id = ?`).get(req.params.id);
+  const fb = await db.prepare(`SELECT id, is_public FROM feedback WHERE id = ?`).get(req.params.id);
   if (!fb) return res.redirect('/feedback');
-  db.prepare(`UPDATE feedback SET is_public = ? WHERE id = ?`).run(fb.is_public ? 0 : 1, fb.id);
+  await db.prepare(`UPDATE feedback SET is_public = ? WHERE id = ?`).run(fb.is_public ? 0 : 1, fb.id);
   req.session.flash = { success: `Feedback visibility updated.` };
   res.redirect(`/feedback/${fb.id}`);
 });

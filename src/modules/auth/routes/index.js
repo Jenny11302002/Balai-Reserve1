@@ -70,7 +70,7 @@ function postLoginRedirect(req, res, role) {
    ════════════════════════════════════════════════════════════════ */
 
 // GET /auth/google/redirect  — landing page for redirect-based Google sign-in
-router.get('/google/redirect', (req, res) => {
+router.get('/google/redirect', async (req, res) => {
   res.render('auth/google-redirect', {
     title:        'Signing in with Google…',
     layout:       'layouts/auth',
@@ -313,7 +313,7 @@ router.post('/google/callback', async (req, res) => {
         UPDATE users
         SET firebase_uid = ?, auth_provider = 'google',
             email_verified = ?, avatar = COALESCE(NULLIF(avatar,''), ?),
-            updated_at = datetime('now')
+            updated_at = NOW()
         WHERE id = ?
       `).run(uid, email_verified ? 1 : 0, picture || '', byEmail.id);
     } else {
@@ -361,7 +361,7 @@ router.post('/google/callback', async (req, res) => {
   }
 
   // ── 4. Set session ─────────────────────────────────────────────
-  await db.prepare(`UPDATE users SET last_login = datetime('now') WHERE id = ?`).run(user.id);
+  await db.prepare(`UPDATE users SET last_login = NOW() WHERE id = ?`).run(user.id);
   req.session.user = buildSessionUser(user);
 
   const isNewUser = !(await db.prepare(
@@ -392,7 +392,7 @@ router.post('/google/callback', async (req, res) => {
    ════════════════════════════════════════════════════════════════ */
 
 // GET /auth/logout
-router.get('/logout', (req, res) => {
+router.get('/logout', async (req, res) => {
   req.session.destroy(() => res.redirect('/auth/login'));
 });
 

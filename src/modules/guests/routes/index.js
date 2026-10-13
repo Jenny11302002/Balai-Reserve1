@@ -23,8 +23,8 @@ router.get('/', requireAuth, (req, res) => {
   }
   if (status) { where += ` AND g.status = ?`; params.push(status); }
 
-  const total  = db.prepare(`SELECT COUNT(*) AS cnt FROM guests g JOIN reservations r ON r.id = g.reservation_id ${where}`).get(...params).cnt;
-  const guests = db.prepare(`
+  const total  = await db.prepare(`SELECT COUNT(*) AS cnt FROM guests g JOIN reservations r ON r.id = g.reservation_id ${where}`).get(...params).cnt;
+  const guests = await db.prepare(`
     SELECT g.*, r.booking_ref, r.check_in_date, r.check_out_date, r.status AS res_status
     FROM guests g
     JOIN reservations r ON r.id = g.reservation_id
@@ -45,7 +45,7 @@ router.get('/', requireAuth, (req, res) => {
 
 // GET /guests/:id
 router.get('/:id', requireAuth, (req, res) => {
-  const guest = db.prepare(`
+  const guest = await db.prepare(`
     SELECT g.*, r.booking_ref, r.check_in_date, r.check_out_date, r.total_amount,
            r.payment_status, r.status AS res_status
     FROM guests g JOIN reservations r ON r.id = g.reservation_id
@@ -53,11 +53,11 @@ router.get('/:id', requireAuth, (req, res) => {
   `).get(req.params.id);
   if (!guest) { req.session.flash = { error: 'Guest not found.' }; return res.redirect('/guests'); }
 
-  const checkIn  = db.prepare(`SELECT * FROM check_ins WHERE reservation_id = ? ORDER BY checked_in_at DESC LIMIT 1`).get(guest.reservation_id);
-  const checkOut = db.prepare(`SELECT * FROM check_outs WHERE reservation_id = ? ORDER BY checked_out_at DESC LIMIT 1`).get(guest.reservation_id);
+  const checkIn  = await db.prepare(`SELECT * FROM check_ins WHERE reservation_id = ? ORDER BY checked_in_at DESC LIMIT 1`).get(guest.reservation_id);
+  const checkOut = await db.prepare(`SELECT * FROM check_outs WHERE reservation_id = ? ORDER BY checked_out_at DESC LIMIT 1`).get(guest.reservation_id);
 
   // All reservations for this guest's email
-  const history = db.prepare(`
+  const history = await db.prepare(`
     SELECT r.*, g2.status AS guest_status
     FROM guests g2 JOIN reservations r ON r.id = g2.reservation_id
     WHERE g2.email = ? ORDER BY r.created_at DESC
@@ -72,13 +72,13 @@ router.get('/:id', requireAuth, (req, res) => {
 
 // POST /guests/:id/checkout
 router.post('/:id/checkout', requireAuth, requireRole('admin','staff'), (req, res) => {
-  const guest = db.prepare(`SELECT * FROM guests WHERE id=?`).get(req.params.id);
+  const guest = await db.prepare(`SELECT * FROM guests WHERE id=?`).get(req.params.id);
   if (!guest) return res.redirect('/guests');
 
   // ── Fix 5: Block checkout if balance is still outstanding ─────────────────
-  const reservation = db.prepare(`SELECT * FROM reservations WHERE id=?`).get(guest.reservation_id);
+  const reservation = await db.prepare(`SELECT * FROM reservations WHERE id=?`).get(guest.reservation_id);
   if (reservation) {
-    const totalPaid = db.prepare(
+    const totalPaid = await db.prepare(
       "SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE reservation_id = ? AND status IN ('received','verified')"
     ).get(guest.reservation_id).t;
     const totalAmt = reservation.total_amount || 0;
@@ -89,17 +89,17 @@ router.post('/:id/checkout', requireAuth, requireRole('admin','staff'), (req, re
   }
 
   db.transaction(() => {
-    db.prepare(`UPDATE guests SET status='checked_out', updated_at=datetime('now') WHERE id=?`).run(guest.id);
+    await db.prepare(`UPDATE guests SET status='checked_out', updated_at=NOW() WHERE id=?`).run(guest.id);
     // ── Fix 5: Set status=completed AND payment_status=fully_paid on checkout
-    db.prepare(`UPDATE reservations SET status='completed', payment_status='fully_paid', updated_at=datetime('now') WHERE id=?`).run(guest.reservation_id);
-    db.prepare(`INSERT INTO check_outs (reservation_id, guest_id, checked_out_by) VALUES (?,?,?)`).run(guest.reservation_id, guest.id, req.session.user.id);
+    await db.prepare(`UPDATE reservations SET status='completed', payment_status='fully_paid', updated_at=NOW() WHERE id=?`).run(guest.reservation_id);
+    await db.prepare(`INSERT INTO check_outs (reservation_id, guest_id, checked_out_by) VALUES (?,?,?)`).run(guest.reservation_id, guest.id, req.session.user.id);
     // Free up the room
     // Free the resource back to available right after checkout completes.
-    const items = db.prepare(`SELECT * FROM reservation_items WHERE reservation_id=?`).all(guest.reservation_id);
+    const items = await db.prepare(`SELECT * FROM reservation_items WHERE reservation_id=?`).all(guest.reservation_id);
     for (const item of items) {
-      if (item.item_type === 'room')    db.prepare(`UPDATE rooms SET status='available' WHERE id=?`).run(item.item_id);
-      if (item.item_type === 'venue')   db.prepare(`UPDATE venues SET status='available' WHERE id=?`).run(item.item_id);
-      if (item.item_type === 'cottage') db.prepare(`UPDATE cottages SET status='available' WHERE id=?`).run(item.item_id);
+      if (item.item_type === 'room')    await db.prepare(`UPDATE rooms SET status='available' WHERE id=?`).run(item.item_id);
+      if (item.item_type === 'venue')   await db.prepare(`UPDATE venues SET status='available' WHERE id=?`).run(item.item_id);
+      if (item.item_type === 'cottage') await db.prepare(`UPDATE cottages SET status='available' WHERE id=?`).run(item.item_id);
     }
   })();
 

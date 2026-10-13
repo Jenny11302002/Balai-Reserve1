@@ -15,13 +15,13 @@ router.get('/', requireAuth, (req, res) => {
   const limit  = 20;
   const offset = (parseInt(page) - 1) * limit;
 
-  const total = db.prepare(`SELECT COUNT(*) AS cnt FROM notifications WHERE user_id=?`).get(req.session.user.id).cnt;
-  const notifications = db.prepare(`
+  const total = await db.prepare(`SELECT COUNT(*) AS cnt FROM notifications WHERE user_id=?`).get(req.session.user.id).cnt;
+  const notifications = await db.prepare(`
     SELECT * FROM notifications WHERE user_id=? ORDER BY created_at DESC LIMIT ? OFFSET ?
   `).all(req.session.user.id, limit, offset);
 
   // Mark all as read
-  db.prepare(`UPDATE notifications SET is_read=1 WHERE user_id=?`).run(req.session.user.id);
+  await db.prepare(`UPDATE notifications SET is_read=1 WHERE user_id=?`).run(req.session.user.id);
 
   res.render('notifications/index', {
     title: 'Notifications – Balai-Reserve',
@@ -36,11 +36,11 @@ router.get('/', requireAuth, (req, res) => {
 router.get('/feed', requireAuth, (req, res) => {
   try {
     const uid = req.session.user.id;
-    const unread = db.prepare(
+    const unread = await db.prepare(
       `SELECT COUNT(*) AS c FROM notifications WHERE user_id=? AND is_read=0`
     ).get(uid).c;
 
-    const items = db.prepare(`
+    const items = await db.prepare(`
       SELECT id, type, title, message, link, is_read, created_at
       FROM notifications
       WHERE user_id=?
@@ -56,19 +56,19 @@ router.get('/feed', requireAuth, (req, res) => {
 
 // POST /notifications/read-all — mark every notification read (from the bell)
 router.post('/read-all', requireAuth, (req, res) => {
-  db.prepare(`UPDATE notifications SET is_read=1 WHERE user_id=?`).run(req.session.user.id);
+  await db.prepare(`UPDATE notifications SET is_read=1 WHERE user_id=?`).run(req.session.user.id);
   res.json({ success: true });
 });
 
 // POST /notifications/:id/read
 router.post('/:id/read', requireAuth, (req, res) => {
-  db.prepare(`UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?`).run(req.params.id, req.session.user.id);
+  await db.prepare(`UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?`).run(req.params.id, req.session.user.id);
   res.json({ success: true });
 });
 
 // DELETE /notifications/clear
 router.post('/clear', requireAuth, (req, res) => {
-  db.prepare(`DELETE FROM notifications WHERE user_id=? AND is_read=1`).run(req.session.user.id);
+  await db.prepare(`DELETE FROM notifications WHERE user_id=? AND is_read=1`).run(req.session.user.id);
   req.session.flash = { success: 'Read notifications cleared.' };
   res.redirect('/notifications');
 });

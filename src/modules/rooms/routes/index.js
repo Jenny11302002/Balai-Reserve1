@@ -18,7 +18,7 @@ const CAN_MANAGE = ['admin', 'staff'];
 
 // Only room types that have at least one active room
 function getActiveRoomTypes() {
-  return db.prepare(
+  return await db.prepare(
     `SELECT rt.* FROM room_types rt
      WHERE EXISTS (SELECT 1 FROM rooms r WHERE r.room_type_id = rt.id AND r.is_active = 1)
      ORDER BY rt.name`
@@ -63,8 +63,8 @@ router.get('/', requireAuth, (req, res) => {
   if (status) { where += ` AND r.status = ?`;  params.push(status); }
   if (type)   { where += ` AND rt.name = ?`;   params.push(type); }
 
-  const total = db.prepare(`SELECT COUNT(*) AS cnt FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id ${where}`).get(...params).cnt;
-  const rooms = db.prepare(`
+  const total = await db.prepare(`SELECT COUNT(*) AS cnt FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id ${where}`).get(...params).cnt;
+  const rooms = await db.prepare(`
     SELECT r.*, rt.name AS type_name
     FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id
     ${where} ORDER BY r.room_number LIMIT ? OFFSET ?
@@ -117,7 +117,7 @@ router.post('/',
     const imagePaths    = (req.files || []).map(f => `/uploads/rooms/${f.filename}`);
     const imagesJson    = JSON.stringify(imagePaths);
 
-    const id = db.prepare(`
+    const id = await db.prepare(`
       INSERT INTO rooms (room_type_id, room_number, name, description, capacity, price, amenities, images, floor, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(room_type_id, room_number, name, description || '', capacity, price, amenitiesJson, imagesJson, floor || '', status || 'available').lastInsertRowid;
@@ -130,7 +130,7 @@ router.post('/',
 
 // GET /rooms/:id
 router.get('/:id', requireAuth, (req, res) => {
-  const room = db.prepare(`
+  const room = await db.prepare(`
     SELECT r.*, rt.name AS type_name
     FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id
     WHERE r.id = ?
@@ -140,7 +140,7 @@ router.get('/:id', requireAuth, (req, res) => {
   try { room.amenitiesList = JSON.parse(room.amenities || '[]'); } catch { room.amenitiesList = []; }
   room.imagesList = parseImages(room.images);
 
-  const reservations = db.prepare(`
+  const reservations = await db.prepare(`
     SELECT r.*, c.first_name || ' ' || c.last_name AS customer_name
     FROM reservations r
     JOIN reservation_items ri ON ri.reservation_id=r.id
@@ -157,7 +157,7 @@ router.get('/:id', requireAuth, (req, res) => {
 
 // GET /rooms/:id/edit
 router.get('/:id/edit', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
-  const room      = db.prepare(`SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.id=?`).get(req.params.id);
+  const room      = await db.prepare(`SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.id=?`).get(req.params.id);
   if (!room) { req.session.flash = { error: 'Room not found.' }; return res.redirect('/rooms'); }
   const roomTypes = getActiveRoomTypes();
   try { room.amenitiesStr = JSON.parse(room.amenities || '[]').join(', '); } catch { room.amenitiesStr = ''; }
@@ -179,7 +179,7 @@ router.post('/:id/edit',
     body('price').isFloat({ min: 0 }).withMessage('Enter a valid price.'),
   ],
   (req, res) => {
-    const old       = db.prepare(`SELECT * FROM rooms WHERE id=?`).get(req.params.id);
+    const old       = await db.prepare(`SELECT * FROM rooms WHERE id=?`).get(req.params.id);
     const roomTypes = getActiveRoomTypes();
     const errors    = validationResult(req);
 
@@ -209,8 +209,8 @@ router.post('/:id/edit',
     const newImages  = (req.files || []).map(f => `/uploads/rooms/${f.filename}`);
     const imagesJson = JSON.stringify([...keepImages, ...newImages]);
 
-    db.prepare(`
-      UPDATE rooms SET name=?,description=?,room_type_id=?,capacity=?,price=?,amenities=?,images=?,floor=?,status=?,updated_at=datetime('now')
+    await db.prepare(`
+      UPDATE rooms SET name=?,description=?,room_type_id=?,capacity=?,price=?,amenities=?,images=?,floor=?,status=?,updated_at=NOW()
       WHERE id=?
     `).run(name, description || '', room_type_id, capacity, price, amenitiesJson, imagesJson, floor || '', status, req.params.id);
 
@@ -223,8 +223,8 @@ router.post('/:id/edit',
 // POST /rooms/:id/status
 router.post('/:id/status', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
   const { status } = req.body;
-  const old = db.prepare(`SELECT status FROM rooms WHERE id=?`).get(req.params.id);
-  db.prepare(`UPDATE rooms SET status=?,updated_at=datetime('now') WHERE id=?`).run(status, req.params.id);
+  const old = await db.prepare(`SELECT status FROM rooms WHERE id=?`).get(req.params.id);
+  await db.prepare(`UPDATE rooms SET status=?,updated_at=NOW() WHERE id=?`).run(status, req.params.id);
   req.audit('status_change', 'rooms', req.params.id, old, { status });
   req.session.flash = { success: 'Room status updated.' };
   res.redirect(req.get('Referer') || '/rooms');

@@ -24,8 +24,8 @@ router.get('/', requireAuth, (req, res) => {
   if (status)   { where += ` AND i.status = ?`;   params.push(status); }
   if (category) { where += ` AND i.category = ?`; params.push(category); }
 
-  const total     = db.prepare(`SELECT COUNT(*) AS cnt FROM inquiries i ${where}`).get(...params).cnt;
-  const inquiries = db.prepare(`
+  const total     = await db.prepare(`SELECT COUNT(*) AS cnt FROM inquiries i ${where}`).get(...params).cnt;
+  const inquiries = await db.prepare(`
     SELECT i.*, u.first_name || ' ' || u.last_name AS assigned_name
     FROM inquiries i LEFT JOIN users u ON u.id=i.assigned_to
     ${where}
@@ -35,10 +35,10 @@ router.get('/', requireAuth, (req, res) => {
 
   const statuses   = ['open','in_progress','escalated','resolved','closed'];
   const categories = ['general','room','venue','event','pricing','complaint','other'];
-  const staffList  = db.prepare(`SELECT id, first_name || ' ' || last_name AS name FROM users WHERE is_active=1`).all();
+  const staffList  = await db.prepare(`SELECT id, first_name || ' ' || last_name AS name FROM users WHERE is_active=1`).all();
 
   // Count per status for the summary strip
-  const statusCountRows = db.prepare(`SELECT status, COUNT(*) AS cnt FROM inquiries GROUP BY status`).all();
+  const statusCountRows = await db.prepare(`SELECT status, COUNT(*) AS cnt FROM inquiries GROUP BY status`).all();
   const statusCounts = {};
   for (const r of statusCountRows) statusCounts[r.status] = r.cnt;
 
@@ -52,7 +52,7 @@ router.get('/', requireAuth, (req, res) => {
 
 // GET /inquiries/:id
 router.get('/:id', requireAuth, (req, res) => {
-  const inquiry = db.prepare(`
+  const inquiry = await db.prepare(`
     SELECT i.*, u.first_name || ' ' || u.last_name AS assigned_name,
            c.first_name || ' ' || c.last_name AS customer_full_name
     FROM inquiries i
@@ -62,8 +62,8 @@ router.get('/:id', requireAuth, (req, res) => {
   `).get(req.params.id);
   if (!inquiry) { req.session.flash = { error: 'Inquiry not found.' }; return res.redirect('/inquiries'); }
 
-  const staffList = db.prepare(`SELECT id, first_name || ' ' || last_name AS name FROM users WHERE is_active=1`).all();
-  const ticket    = db.prepare(`SELECT * FROM support_tickets WHERE inquiry_id=? LIMIT 1`).get(inquiry.id);
+  const staffList = await db.prepare(`SELECT id, first_name || ' ' || last_name AS name FROM users WHERE is_active=1`).all();
+  const ticket    = await db.prepare(`SELECT * FROM support_tickets WHERE inquiry_id=? LIMIT 1`).get(inquiry.id);
 
   res.render('inquiries/show', { title: `Inquiry #${inquiry.id}`, layout: 'layouts/main', inquiry, staffList, ticket });
 });
@@ -71,7 +71,7 @@ router.get('/:id', requireAuth, (req, res) => {
 // POST /inquiries/:id/assign
 router.post('/:id/assign', requireAuth, requireRole('admin','staff'), (req, res) => {
   const { assigned_to } = req.body;
-  db.prepare(`UPDATE inquiries SET assigned_to=?, status='in_progress', updated_at=datetime('now') WHERE id=?`).run(assigned_to, req.params.id);
+  await db.prepare(`UPDATE inquiries SET assigned_to=?, status='in_progress', updated_at=NOW() WHERE id=?`).run(assigned_to, req.params.id);
   req.session.flash = { success: 'Inquiry assigned.' };
   res.redirect(`/inquiries/${req.params.id}`);
 });
@@ -80,23 +80,23 @@ router.post('/:id/assign', requireAuth, requireRole('admin','staff'), (req, res)
 router.post('/:id/resolve', requireAuth, requireRole('admin','staff'), (req, res) => {
   const { resolution } = req.body;
   // Auto-assign to the staff member who resolves — no manual selection needed
-  db.prepare(`UPDATE inquiries SET status='resolved', resolution=?, assigned_to=?, resolved_at=datetime('now'), updated_at=datetime('now') WHERE id=?`).run(resolution || '', req.session.user.id, req.params.id);
+  await db.prepare(`UPDATE inquiries SET status='resolved', resolution=?, assigned_to=?, resolved_at=NOW(), updated_at=NOW() WHERE id=?`).run(resolution || '', req.session.user.id, req.params.id);
   req.session.flash = { success: 'Inquiry marked as resolved.' };
   res.redirect(`/inquiries/${req.params.id}`);
 });
 
 // POST /inquiries/:id/escalate – escalate to ticket
 router.post('/:id/escalate', requireAuth, requireRole('admin','staff'), (req, res) => {
-  const inquiry = db.prepare(`SELECT * FROM inquiries WHERE id=?`).get(req.params.id);
+  const inquiry = await db.prepare(`SELECT * FROM inquiries WHERE id=?`).get(req.params.id);
   if (!inquiry) return res.redirect('/inquiries');
 
   const ticketNum = generateTicketNumber();
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO support_tickets (ticket_number, customer_id, inquiry_id, subject, description, category, priority, status, assigned_to)
     VALUES (?, ?, ?, ?, ?, ?, 'normal', 'open', ?)
   `).run(ticketNum, inquiry.customer_id, inquiry.id, inquiry.subject, inquiry.message, inquiry.category || 'general', req.session.user.id);
 
-  db.prepare(`UPDATE inquiries SET status='escalated', updated_at=datetime('now') WHERE id=?`).run(inquiry.id);
+  await db.prepare(`UPDATE inquiries SET status='escalated', updated_at=NOW() WHERE id=?`).run(inquiry.id);
   req.session.flash = { success: `Escalated to support ticket ${ticketNum}.` };
   res.redirect(`/inquiries/${inquiry.id}`);
 });
@@ -119,10 +119,10 @@ router.post('/submit',
     // Link to the customer record when the submitter is logged in, so it shows
     // up under their "My Inquiries" in the portal.
     const customerId = req.session?.user
-      ? (db.prepare('SELECT id FROM customers WHERE user_id = ?').get(req.session.user.id)?.id || null)
+      ? (await db.prepare('SELECT id FROM customers WHERE user_id = ?').get(req.session.user.id)?.id || null)
       : null;
 
-    const id = db.prepare(`
+    const id = await db.prepare(`
       INSERT INTO inquiries (customer_id, name, email, phone, subject, message, category, source, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'open')
     `).run(customerId, name, email||'', phone||'', subject, message, category||'general', source||'website').lastInsertRowid;
@@ -138,7 +138,7 @@ router.post('/submit',
 
 // ── Chatbot / Automated Assistant ─────────────────────────────
 // POST /inquiries/chat
-router.post('/chat', (req, res) => {
+router.post('/chat', async (req, res) => {
   const { message } = req.body;
   if (!message) return res.json({ reply: 'Please type your question.' });
 
@@ -155,54 +155,54 @@ function autoAnswer(message) {
 
   // Room availability
   if (msg.includes('room') && (msg.includes('available') || msg.includes('vacancy') || msg.includes('free'))) {
-    const available = db.prepare(`SELECT COUNT(*) AS cnt FROM rooms WHERE status='available' AND is_active=1`).get().cnt;
+    const available = await db.prepare(`SELECT COUNT(*) AS cnt FROM rooms WHERE status='available' AND is_active=1`).get().cnt;
     return `We currently have ${available} room(s) available. You can check our room listings or speak with our reservations team to find the perfect room for your stay.`;
   }
 
   // Room prices
   if (msg.includes('room') && (msg.includes('price') || msg.includes('rate') || msg.includes('cost'))) {
-    const types = db.prepare(`SELECT name, base_price FROM room_types ORDER BY base_price`).all();
+    const types = await db.prepare(`SELECT name, base_price FROM room_types ORDER BY base_price`).all();
     const list  = types.map(t => `${t.name}: ₱${t.base_price.toLocaleString()}/night`).join(', ');
     return `Our room rates start from: ${list}. Prices may vary per specific room. Contact us for detailed pricing.`;
   }
 
   // Venue availability
   if (msg.includes('venue') && (msg.includes('available') || msg.includes('book') || msg.includes('reserve'))) {
-    const available = db.prepare(`SELECT COUNT(*) AS cnt FROM venues WHERE status='available' AND is_active=1`).get().cnt;
+    const available = await db.prepare(`SELECT COUNT(*) AS cnt FROM venues WHERE status='available' AND is_active=1`).get().cnt;
     return `We have ${available} venue(s) currently available. Our venues include function halls, garden areas, poolside, and more. Please contact our team to check availability for your preferred date.`;
   }
 
   // Event packages
   if (msg.includes('package') || msg.includes('wedding') || msg.includes('birthday') || msg.includes('event')) {
-    const packages = db.prepare(`SELECT name, price FROM event_packages WHERE is_active=1 ORDER BY price`).all();
+    const packages = await db.prepare(`SELECT name, price FROM event_packages WHERE is_active=1 ORDER BY price`).all();
     const list     = packages.map(p => `${p.name}: ₱${p.price.toLocaleString()}`).join(', ');
     return `Our event packages include: ${list}. Each package can be customized to fit your needs. Please contact our events team for details.`;
   }
 
   // Check-in / check-out time
   if (msg.includes('check-in') || msg.includes('check in') || msg.includes('check-out') || msg.includes('checkout')) {
-    const cin  = db.prepare(`SELECT value FROM settings WHERE key='check_in_time'`).get()?.value  || '2:00 PM';
-    const cout = db.prepare(`SELECT value FROM settings WHERE key='check_out_time'`).get()?.value || '12:00 PM';
+    const cin  = await db.prepare(`SELECT value FROM settings WHERE key='check_in_time'`).get()?.value  || '2:00 PM';
+    const cout = await db.prepare(`SELECT value FROM settings WHERE key='check_out_time'`).get()?.value || '12:00 PM';
     return `Check-in time is ${cin} and check-out time is ${cout}. Early check-in or late check-out may be available upon request, subject to availability.`;
   }
 
   // Payment / downpayment
   if (msg.includes('payment') || msg.includes('downpayment') || msg.includes('deposit')) {
-    const pct = db.prepare(`SELECT value FROM settings WHERE key='downpayment_percent'`).get()?.value || '50';
+    const pct = await db.prepare(`SELECT value FROM settings WHERE key='downpayment_percent'`).get()?.value || '50';
     return `A ${pct}% downpayment is required to confirm your reservation. We accept cash, GCash, bank transfer, check, and credit card. Full payment is required upon check-in or before the event.`;
   }
 
   // Cancellation
   if (msg.includes('cancel') || msg.includes('refund')) {
-    const policy = db.prepare(`SELECT value FROM settings WHERE key='cancellation_policy'`).get()?.value || 'Please contact us regarding our cancellation policy.';
+    const policy = await db.prepare(`SELECT value FROM settings WHERE key='cancellation_policy'`).get()?.value || 'Please contact us regarding our cancellation policy.';
     return policy;
   }
 
   // Contact information
   if (msg.includes('contact') || msg.includes('phone') || msg.includes('email') || msg.includes('address')) {
-    const phone   = db.prepare(`SELECT value FROM settings WHERE key='resort_phone'`).get()?.value   || '';
-    const email   = db.prepare(`SELECT value FROM settings WHERE key='resort_email'`).get()?.value   || '';
-    const address = db.prepare(`SELECT value FROM settings WHERE key='resort_address'`).get()?.value || '';
+    const phone   = await db.prepare(`SELECT value FROM settings WHERE key='resort_phone'`).get()?.value   || '';
+    const email   = await db.prepare(`SELECT value FROM settings WHERE key='resort_email'`).get()?.value   || '';
+    const address = await db.prepare(`SELECT value FROM settings WHERE key='resort_address'`).get()?.value || '';
     return `You can reach us at: Phone: ${phone}, Email: ${email}, Address: ${address}. Our team is available during office hours.`;
   }
 

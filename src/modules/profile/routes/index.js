@@ -18,7 +18,7 @@ const router = express.Router();
 
 // GET /profile
 router.get('/', requireAuth, (req, res) => {
-  const user = db.prepare(`
+  const user = await db.prepare(`
     SELECT u.*, r.name AS role_name, r.label AS role_label
     FROM users u JOIN roles r ON r.id = u.role_id
     WHERE u.id = ?
@@ -29,7 +29,7 @@ router.get('/', requireAuth, (req, res) => {
     return;
   }
 
-  const recentActivity = db.prepare(`
+  const recentActivity = await db.prepare(`
     SELECT * FROM audit_logs WHERE user_id = ?
     ORDER BY created_at DESC LIMIT 8
   `).all(user.id);
@@ -54,7 +54,7 @@ router.post('/',
     body('phone').optional({ checkFalsy: true }).trim(),
   ],
   (req, res) => {
-    const user = db.prepare(`
+    const user = await db.prepare(`
       SELECT u.*, r.name AS role_name, r.label AS role_label
       FROM users u JOIN roles r ON r.id = u.role_id
       WHERE u.id = ?
@@ -73,8 +73,8 @@ router.post('/',
     const { first_name, last_name, phone } = req.body;
     const old = { first_name: user.first_name, last_name: user.last_name, phone: user.phone };
 
-    db.prepare(`
-      UPDATE users SET first_name=?, last_name=?, phone=?, updated_at=datetime('now')
+    await db.prepare(`
+      UPDATE users SET first_name=?, last_name=?, phone=?, updated_at=NOW()
       WHERE id=?
     `).run(first_name, last_name, phone || '', req.session.user.id);
 
@@ -100,7 +100,7 @@ router.post('/password',
     }),
   ],
   (req, res) => {
-    const user = db.prepare(`
+    const user = await db.prepare(`
       SELECT u.*, r.name AS role_name, r.label AS role_label
       FROM users u JOIN roles r ON r.id = u.role_id
       WHERE u.id = ?
@@ -117,7 +117,7 @@ router.post('/password',
     }
 
     if (allErrors.length > 0) {
-      const recentActivity = db.prepare(`SELECT * FROM audit_logs WHERE user_id=? ORDER BY created_at DESC LIMIT 8`).all(user.id);
+      const recentActivity = await db.prepare(`SELECT * FROM audit_logs WHERE user_id=? ORDER BY created_at DESC LIMIT 8`).all(user.id);
       return res.render('profile/index', {
         title: 'My Profile', layout: 'layouts/main',
         profileUser: user, recentActivity,
@@ -127,7 +127,7 @@ router.post('/password',
     }
 
     const hash = bcrypt.hashSync(req.body.new_password, 12);
-    db.prepare(`UPDATE users SET password_hash=?, updated_at=datetime('now') WHERE id=?`).run(hash, user.id);
+    await db.prepare(`UPDATE users SET password_hash=?, updated_at=NOW() WHERE id=?`).run(hash, user.id);
 
     req.audit('password_change', 'profile', user.id, null, null);
     req.session.flash = { success: 'Password changed successfully.' };

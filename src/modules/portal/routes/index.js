@@ -124,7 +124,7 @@ function calculateServerTotal(reservation_type, roomId, venueId, pkgId, ciDate, 
   let total = 0;
 
   if (reservation_type === 'room' && roomId) {
-    const room = db.prepare('SELECT price FROM rooms WHERE id = ?').get(roomId);
+    const room = await db.prepare('SELECT price FROM rooms WHERE id = ?').get(roomId);
     if (room && ciDate && coDate) {
       const nights = Math.ceil((new Date(coDate) - new Date(ciDate)) / 86400000);
       total = (room.price || 0) * Math.max(nights, 1);
@@ -132,22 +132,22 @@ function calculateServerTotal(reservation_type, roomId, venueId, pkgId, ciDate, 
       total = room.price || 0;
     }
   } else if (reservation_type === 'venue' && venueId) {
-    const venue = db.prepare('SELECT price FROM venues WHERE id = ?').get(venueId);
+    const venue = await db.prepare('SELECT price FROM venues WHERE id = ?').get(venueId);
     total = venue ? (venue.price || 0) : 0;
   } else if (reservation_type === 'cottage' && roomId) {
-    const cottage = db.prepare('SELECT name, price FROM cottages WHERE id = ?').get(roomId);
+    const cottage = await db.prepare('SELECT name, price FROM cottages WHERE id = ?').get(roomId);
     const wholeDayRate = cottage?.name.trim().toLowerCase() === 'umbrella table';
     total = cottage && (wholeDayRate || validateCottageTimeRange(startTime, endTime))
       ? calculateCottageTotal(cottage.price, startTime, endTime, wholeDayRate)
       : 0;
   } else if (reservation_type === 'event' && venueId) {
-    const venue = db.prepare('SELECT price FROM venues WHERE id = ?').get(venueId);
+    const venue = await db.prepare('SELECT price FROM venues WHERE id = ?').get(venueId);
     total = venue ? (venue.price || 0) : 0;
   }
 
   // Add base package price
   if (pkgId) {
-    const pkg = db.prepare('SELECT price, inclusions FROM event_packages WHERE id = ?').get(pkgId);
+    const pkg = await db.prepare('SELECT price, inclusions FROM event_packages WHERE id = ?').get(pkgId);
     if (pkg) {
       total += pkg.price || 0;
 
@@ -182,32 +182,32 @@ function calculateServerTotal(reservation_type, roomId, venueId, pkgId, ciDate, 
 
 // ── GET /portal ─────────────────────────────────────────────────────────────
 router.get('/', requireCustomerOrGuest, (req, res) => {
-  const availableRooms  = db.prepare('SELECT COUNT(*) AS c FROM rooms  WHERE status=\'available\' AND is_active=1').get().c;
-  const availableVenues = db.prepare('SELECT COUNT(*) AS c FROM venues WHERE status=\'available\' AND is_active=1').get().c;
-  const availableCottages = db.prepare('SELECT COUNT(*) AS c FROM cottages WHERE status=\'available\' AND is_active=1').get().c;
+  const availableRooms  = await db.prepare('SELECT COUNT(*) AS c FROM rooms  WHERE status=\'available\' AND is_active=1').get().c;
+  const availableVenues = await db.prepare('SELECT COUNT(*) AS c FROM venues WHERE status=\'available\' AND is_active=1').get().c;
+  const availableCottages = await db.prepare('SELECT COUNT(*) AS c FROM cottages WHERE status=\'available\' AND is_active=1').get().c;
 
-  const featuredRooms = db.prepare(
+  const featuredRooms = await db.prepare(
     'SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.status=\'available\' AND r.is_active=1 ORDER BY r.price LIMIT 3'
   ).all();
   for (const r of featuredRooms) {
     try { r.imagesList = JSON.parse(r.images || '[]'); } catch { r.imagesList = []; }
   }
 
-  const featuredVenues = db.prepare(
+  const featuredVenues = await db.prepare(
     'SELECT * FROM venues WHERE status=\'available\' AND is_active=1 ORDER BY price LIMIT 3'
   ).all();
   for (const v of featuredVenues) {
     try { v.imagesList = JSON.parse(v.images || '[]'); } catch { v.imagesList = []; }
   }
 
-  const featuredCottages = db.prepare(
+  const featuredCottages = await db.prepare(
     'SELECT * FROM cottages WHERE status=\'available\' AND is_active=1 ORDER BY price LIMIT 3'
   ).all();
   for (const c of featuredCottages) {
     try { c.imagesList = JSON.parse(c.images || '[]'); } catch { c.imagesList = []; }
   }
 
-  const packages = db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price LIMIT 4').all();
+  const packages = await db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price LIMIT 4').all();
 
   res.render('portal/home', {
     title: 'Welcome to Balai-Reserve',
@@ -231,7 +231,7 @@ router.get('/rooms', requireCustomerOrGuest, (req, res) => {
   // Set of room ids that are booked for the requested date range (if given).
   let bookedIds = new Set();
   if (checkin && checkout) {
-    const rows = db.prepare(`
+    const rows = await db.prepare(`
       SELECT ri.item_id FROM reservation_items ri
       JOIN reservations res ON res.id=ri.reservation_id
       WHERE ri.item_type='room'
@@ -243,7 +243,7 @@ router.get('/rooms', requireCustomerOrGuest, (req, res) => {
 
   const orderBy = sort === 'price_desc' ? 'r.price DESC' : 'r.price ASC';
 
-  const rooms = db.prepare(
+  const rooms = await db.prepare(
     `SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id ${where} ORDER BY ${orderBy}`
   ).all(...params);
 
@@ -255,7 +255,7 @@ router.get('/rooms', requireCustomerOrGuest, (req, res) => {
     r.isAvailable = (r.status === 'available') && !bookedIds.has(r.id);
   }
 
-  const roomTypes = db.prepare('SELECT DISTINCT rt.name FROM room_types rt JOIN rooms r ON r.room_type_id = rt.id WHERE r.is_active = 1 ORDER BY rt.name').all();
+  const roomTypes = await db.prepare('SELECT DISTINCT rt.name FROM room_types rt JOIN rooms r ON r.room_type_id = rt.id WHERE r.is_active = 1 ORDER BY rt.name').all();
 
   res.render('portal/rooms', {
     title: 'Browse Rooms – Balai-Reserve',
@@ -277,7 +277,7 @@ router.get('/venues', requireCustomerOrGuest, (req, res) => {
 
   const orderBy = sort === 'price_desc' ? 'price DESC' : 'price ASC';
 
-  const venues = db.prepare(`SELECT * FROM venues ${where} ORDER BY ${orderBy}`).all(...params);
+  const venues = await db.prepare(`SELECT * FROM venues ${where} ORDER BY ${orderBy}`).all(...params);
 
   // Parse images and compute availability
   for (const v of venues) {
@@ -286,10 +286,10 @@ router.get('/venues', requireCustomerOrGuest, (req, res) => {
     v.isAvailable = (v.status === 'available');
   }
 
-  const venueTypes = db.prepare(
+  const venueTypes = await db.prepare(
     `SELECT DISTINCT venue_type FROM venues WHERE is_active = 1 ORDER BY venue_type`
   ).all().map(r => r.venue_type);
-  const packages   = db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price').all();
+  const packages   = await db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price').all();
 
   // Parse inclusions for packages
   for (const p of packages) {
@@ -316,7 +316,7 @@ router.get('/cottages', requireCustomerOrGuest, (req, res) => {
 
   const orderBy = sort === 'price_desc' ? 'price DESC' : 'price ASC';
 
-  const cottages = db.prepare(`SELECT * FROM cottages ${where} ORDER BY ${orderBy}`).all(...params);
+  const cottages = await db.prepare(`SELECT * FROM cottages ${where} ORDER BY ${orderBy}`).all(...params);
 
   for (const c of cottages) {
     try { c.imagesList = JSON.parse(c.images || '[]'); } catch { c.imagesList = []; }
@@ -336,9 +336,9 @@ router.get('/cottages', requireCustomerOrGuest, (req, res) => {
 router.get('/book', requireCustomer, (req, res) => {
   const { type = '', item_id = '', package_id = '', checkin = '', checkout = '', date = '' } = req.query;
 
-  const rooms    = db.prepare('SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.status=\'available\' AND r.is_active=1 ORDER BY r.price').all();
-  const venues   = db.prepare('SELECT * FROM venues WHERE status=\'available\' AND is_active=1 ORDER BY price').all();
-  const rawPkgs  = db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price').all();
+  const rooms    = await db.prepare('SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.status=\'available\' AND r.is_active=1 ORDER BY r.price').all();
+  const venues   = await db.prepare('SELECT * FROM venues WHERE status=\'available\' AND is_active=1 ORDER BY price').all();
+  const rawPkgs  = await db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price').all();
 
   // Parse image arrays so the booking page can show a gallery of the selected item.
   const parseImgs = (row) => {
@@ -367,17 +367,17 @@ router.get('/book', requireCustomer, (req, res) => {
   });
 
   let selectedItem = null;
-  if (item_id && type === 'room')    selectedItem = db.prepare('SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.id=?').get(item_id);
-  if (item_id && type === 'venue')   selectedItem = db.prepare('SELECT * FROM venues WHERE id=?').get(item_id);
-  if (item_id && type === 'cottage') selectedItem = db.prepare('SELECT * FROM cottages WHERE id=?').get(item_id);
+  if (item_id && type === 'room')    selectedItem = await db.prepare('SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.id=?').get(item_id);
+  if (item_id && type === 'venue')   selectedItem = await db.prepare('SELECT * FROM venues WHERE id=?').get(item_id);
+  if (item_id && type === 'cottage') selectedItem = await db.prepare('SELECT * FROM cottages WHERE id=?').get(item_id);
 
-  const cottages = db.prepare('SELECT * FROM cottages WHERE status=\'available\' AND is_active=1 ORDER BY price').all();
+  const cottages = await db.prepare('SELECT * FROM cottages WHERE status=\'available\' AND is_active=1 ORDER BY price').all();
   cottages.forEach(parseImgs);
   if (selectedItem) parseImgs(selectedItem);
 
   // Booking policy settings for the Terms & Conditions modal.
   const policyKeys = ['cancellation_policy','downpayment_percent','check_in_time','check_out_time','resort_name'];
-  const policyRows = db.prepare(
+  const policyRows = await db.prepare(
     `SELECT key, value FROM settings WHERE key IN (${policyKeys.map(() => '?').join(',')})`
   ).all(...policyKeys);
   const ps = {};
@@ -538,13 +538,13 @@ router.post('/book',
     const pmLabel = { gcash:'GCash', bank_transfer:'Bank Transfer (BDO/BPI)', maya:'Maya', cash:'Cash (Walk-in / Front Desk)' }[pmMethod] || pmMethod;
 
     // ── Find or create customer record ────────────────────────────────────
-    let customer = db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
+    let customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
     if (!customer) {
       const code = 'CUS-' + String(Date.now()).slice(-6);
-      db.prepare('INSERT OR IGNORE INTO customers (user_id, customer_code, first_name, last_name, email, status) VALUES (?, ?, ?, ?, ?, ?)').run(
+      await db.prepare('INSERT OR IGNORE INTO customers (user_id, customer_code, first_name, last_name, email, status) VALUES (?, ?, ?, ?, ?, ?)').run(
         user.id, code, user.firstName, user.lastName, user.email || '', 'active'
       );
-      customer = db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
+      customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
     }
     if (!customer) {
       req.session.flash = { error: 'Could not create customer record. Please try again.' };
@@ -553,9 +553,9 @@ router.post('/book',
 
     // ── Double-booking guard (room only) ──────────────────────────────────
     if (reservation_type === 'room' && roomId && ciDate && coDate) {
-      const linkedItems = db.prepare('SELECT reservation_id FROM reservation_items WHERE item_type = ? AND item_id = ?').all('room', roomId);
+      const linkedItems = await db.prepare('SELECT reservation_id FROM reservation_items WHERE item_type = ? AND item_id = ?').all('room', roomId);
       for (const li of linkedItems) {
-        const existing = db.prepare('SELECT id, status, check_in_date, check_out_date FROM reservations WHERE id = ?').get(li.reservation_id);
+        const existing = await db.prepare('SELECT id, status, check_in_date, check_out_date FROM reservations WHERE id = ?').get(li.reservation_id);
         if (!existing) continue;
         if (!['pending','awaiting_payment','confirmed','checked_in'].includes(existing.status)) continue;
         if (!existing.check_in_date || !existing.check_out_date) continue;
@@ -569,7 +569,7 @@ router.post('/book',
     const bookingRef = generateBookingRef();
 
     const resId = db.transaction(() => {
-      const newId = db.prepare(
+      const newId = await db.prepare(
         'INSERT INTO reservations (booking_ref, customer_id, reservation_type, check_in_date, check_out_date, event_date, start_time, end_time, num_guests, special_requests, total_amount, downpayment_req, status, payment_status, source, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).run(
         bookingRef, customer.id, reservation_type,
@@ -583,24 +583,24 @@ router.post('/book',
       // Reservation item — and mark the booked resource as reserved so it
       // stops showing as available while this booking is active.
       if (reservation_type === 'room' && roomId) {
-        const row = db.prepare('SELECT name, price FROM rooms WHERE id = ?').get(roomId);
-        db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'room', roomId, row?.name||'', 1, row?.price||0, totalAmt);
-        db.prepare("UPDATE rooms SET status='reserved', updated_at=datetime('now') WHERE id=?").run(roomId);
+        const row = await db.prepare('SELECT name, price FROM rooms WHERE id = ?').get(roomId);
+        await db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'room', roomId, row?.name||'', 1, row?.price||0, totalAmt);
+        await db.prepare("UPDATE rooms SET status='reserved', updated_at=NOW() WHERE id=?").run(roomId);
       } else if (reservation_type === 'venue' && venueId) {
-        const row = db.prepare('SELECT name, price FROM venues WHERE id = ?').get(venueId);
-        db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'venue', venueId, row?.name||'', 1, row?.price||0, totalAmt);
-        db.prepare("UPDATE venues SET status='reserved', updated_at=datetime('now') WHERE id=?").run(venueId);
+        const row = await db.prepare('SELECT name, price FROM venues WHERE id = ?').get(venueId);
+        await db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'venue', venueId, row?.name||'', 1, row?.price||0, totalAmt);
+        await db.prepare("UPDATE venues SET status='reserved', updated_at=NOW() WHERE id=?").run(venueId);
       } else if (reservation_type === 'cottage' && roomId) {
-        const row = db.prepare('SELECT name, price FROM cottages WHERE id = ?').get(roomId);
-        db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'cottage', roomId, row?.name||'', 1, row?.price||0, totalAmt);
-        db.prepare("UPDATE cottages SET status='reserved', updated_at=datetime('now') WHERE id=?").run(roomId);
+        const row = await db.prepare('SELECT name, price FROM cottages WHERE id = ?').get(roomId);
+        await db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'cottage', roomId, row?.name||'', 1, row?.price||0, totalAmt);
+        await db.prepare("UPDATE cottages SET status='reserved', updated_at=NOW() WHERE id=?").run(roomId);
       }
 
       if (pkgId) {
-        const pkg = db.prepare('SELECT name, price, inclusions FROM event_packages WHERE id = ?').get(pkgId);
+        const pkg = await db.prepare('SELECT name, price, inclusions FROM event_packages WHERE id = ?').get(pkgId);
         if (pkg) {
           // Insert the base package row
-          db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+          await db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
             newId, 'event_package', pkgId, pkg.name, 1, pkg.price, pkg.price
           );
 
@@ -619,7 +619,7 @@ router.post('/book',
               const name = (sel.name || '').trim();
               if (addonMap.has(name)) {
                 const addonPrice = addonMap.get(name);
-                db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+                await db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
                   newId, 'inclusion', pkgId, name, 1, addonPrice, addonPrice, 'Event package add-on'
                 );
               }
@@ -629,13 +629,13 @@ router.post('/book',
       }
 
       // Status history
-      db.prepare("INSERT INTO reservation_status_history (reservation_id, from_status, to_status) VALUES (?, NULL, 'awaiting_payment')").run(newId);
+      await db.prepare("INSERT INTO reservation_status_history (reservation_id, from_status, to_status) VALUES (?, NULL, 'awaiting_payment')").run(newId);
 
       // Guest record
-      db.prepare("INSERT INTO guests (reservation_id, customer_id, first_name, last_name, email, num_guests, status) VALUES (?, ?, ?, ?, ?, ?, 'expected')").run(newId, customer.id, user.firstName, user.lastName, user.email||'', guestCount);
+      await db.prepare("INSERT INTO guests (reservation_id, customer_id, first_name, last_name, email, num_guests, status) VALUES (?, ?, ?, ?, ?, ?, 'expected')").run(newId, customer.id, user.firstName, user.lastName, user.email||'', guestCount);
 
       // CRM activity
-      db.prepare("INSERT INTO crm_activities (customer_id, activity_type, subject, description, status) VALUES (?, 'inquiry', ?, ?, 'completed')").run(
+      await db.prepare("INSERT INTO crm_activities (customer_id, activity_type, subject, description, status) VALUES (?, 'inquiry', ?, ?, 'completed')").run(
         customer.id,
         'Online booking submitted',
         'Booking ' + bookingRef + ' — ' + reservation_type + ' — ₱' + totalAmt.toLocaleString() + ' total. Downpayment ₱' + dpAmt.toLocaleString() + ' via ' + pmLabel
@@ -680,13 +680,13 @@ router.post(
   proofUpload.single('proof_image'),
   async (req, res) => {
     const user     = req.session.user;
-    const customer = db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
+    const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
     if (!customer) {
       req.session.flash = { error: 'Session error. Please log in again.' };
       return res.redirect('/auth/login');
     }
 
-    const reservation = db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.id, customer.id);
+    const reservation = await db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.id, customer.id);
     if (!reservation) {
       req.session.flash = { error: 'Booking not found.' };
       return res.redirect('/portal/my-reservations');
@@ -755,7 +755,7 @@ router.post(
     }
 
     // ── FIX 5a: Prevent duplicate unverified submissions ──────────────────
-    const existingPending = db.prepare(
+    const existingPending = await db.prepare(
       "SELECT id FROM payments WHERE reservation_id = ? AND submitted_by = 'customer' AND status = 'received'"
     ).get(reservation.id);
 
@@ -786,13 +786,13 @@ router.post(
     try {
       db.transaction(() => {
         // Insert the payment as 'received' — staff will change to 'verified'
-        db.prepare(
-          'INSERT INTO payments (reservation_id, reference_number, amount, payment_method, payment_date, payment_type, status, notes, proof_image, submitted_by) VALUES (?, ?, ?, ?, DATE(\'now\'), ?, \'received\', ?, ?, \'customer\')'
+        await db.prepare(
+          'INSERT INTO payments (reservation_id, reference_number, amount, payment_method, payment_date, payment_type, status, notes, proof_image, submitted_by) VALUES (?, ?, ?, ?, CAST(\'now\' AS DATE), ?, \'received\', ?, ?, \'customer\')'
         ).run(reservation.id, refNum, amount, pmMethod, payType, noteText, proofPath);
 
         // ── FIX 5b: Immediately update payment_status so the customer sees
         //           "Partially Paid" instead of "Unpaid" after submitting proof
-        const totalPaid = db.prepare(
+        const totalPaid = await db.prepare(
           "SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE reservation_id = ? AND status = 'received'"
         ).get(reservation.id).t;
 
@@ -800,7 +800,7 @@ router.post(
         if (totalPaid >= reservation.total_amount && reservation.total_amount > 0) {
           newPayStatus = 'fully_paid';
         }
-        db.prepare("UPDATE reservations SET payment_status = ?, updated_at = datetime('now') WHERE id = ?").run(newPayStatus, reservation.id);
+        await db.prepare("UPDATE reservations SET payment_status = ?, updated_at = NOW() WHERE id = ?").run(newPayStatus, reservation.id);
       })();
     } catch (error) {
       if (error.code !== 'SQLITE_CONSTRAINT_UNIQUE') throw error;
@@ -838,16 +838,16 @@ router.post(
 // ── GET /portal/profile — customer profile settings ────────────────────────
 router.get('/profile', requireCustomer, (req, res) => {
   const user     = req.session.user;
-  const account  = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
-  let   customer = db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
+  const account  = await db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+  let   customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
 
   // Ensure a customer record exists
   if (!customer) {
     const code = 'CUS-' + String(Date.now()).slice(-6);
-    db.prepare('INSERT OR IGNORE INTO customers (user_id, customer_code, first_name, last_name, email, status) VALUES (?, ?, ?, ?, ?, ?)').run(
+    await db.prepare('INSERT OR IGNORE INTO customers (user_id, customer_code, first_name, last_name, email, status) VALUES (?, ?, ?, ?, ?, ?)').run(
       user.id, code, user.firstName, user.lastName, user.email || '', 'active'
     );
-    customer = db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
+    customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
   }
 
   res.render('portal/profile', {
@@ -871,8 +871,8 @@ router.post('/profile',
   ],
   (req, res) => {
     const user    = req.session.user;
-    const account = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
-    const customer= db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
+    const account = await db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+    const customer= await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
 
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -887,12 +887,12 @@ router.post('/profile',
 
     db.transaction(() => {
       // Update the users row (auth identity + navbar name)
-      db.prepare(`UPDATE users SET first_name=?, last_name=?, phone=?, updated_at=datetime('now') WHERE id=?`)
+      await db.prepare(`UPDATE users SET first_name=?, last_name=?, phone=?, updated_at=NOW() WHERE id=?`)
         .run(first_name, last_name, phone || '', user.id);
 
       // Update the linked customer profile row
       if (customer) {
-        db.prepare(`UPDATE customers SET first_name=?, last_name=?, phone=?, address=?, preferred_contact=?, updated_at=datetime('now') WHERE id=?`)
+        await db.prepare(`UPDATE customers SET first_name=?, last_name=?, phone=?, address=?, preferred_contact=?, updated_at=NOW() WHERE id=?`)
           .run(first_name, last_name, phone || '', address || '', preferred_contact || 'email', customer.id);
       }
     })();
@@ -919,8 +919,8 @@ router.post('/profile/password',
   ],
   (req, res) => {
     const user     = req.session.user;
-    const account  = db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
-    const customer = db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
+    const account  = await db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
+    const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
     const errors   = validationResult(req);
     const allErrors = errors.array();
 
@@ -941,7 +941,7 @@ router.post('/profile/password',
     }
 
     const hash = bcrypt.hashSync(req.body.new_password, 12);
-    db.prepare(`UPDATE users SET password_hash=?, updated_at=datetime('now') WHERE id=?`).run(hash, user.id);
+    await db.prepare(`UPDATE users SET password_hash=?, updated_at=NOW() WHERE id=?`).run(hash, user.id);
 
     req.session.flash = { success: 'Your password has been changed.' };
     res.redirect('/portal/profile');
@@ -951,12 +951,12 @@ router.post('/profile/password',
 // ── GET /portal/notifications ───────────────────────────────────────────────
 router.get('/notifications', requireCustomer, (req, res) => {
   const uid = req.session.user.id;
-  const notifications = db.prepare(
+  const notifications = await db.prepare(
     `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100`
   ).all(uid);
 
   // Mark all as read when the customer opens the page
-  db.prepare(`UPDATE notifications SET is_read = 1 WHERE user_id = ?`).run(uid);
+  await db.prepare(`UPDATE notifications SET is_read = 1 WHERE user_id = ?`).run(uid);
 
   res.render('portal/notifications', {
     title:  'Notifications – Balai-Reserve',
@@ -967,7 +967,7 @@ router.get('/notifications', requireCustomer, (req, res) => {
 
 // ── POST /portal/notifications/clear — delete read notifications ────────────
 router.post('/notifications/clear', requireCustomer, (req, res) => {
-  db.prepare(`DELETE FROM notifications WHERE user_id = ? AND is_read = 1`).run(req.session.user.id);
+  await db.prepare(`DELETE FROM notifications WHERE user_id = ? AND is_read = 1`).run(req.session.user.id);
   req.session.flash = { success: 'Notifications cleared.' };
   res.redirect('/portal/notifications');
 });
@@ -975,7 +975,7 @@ router.post('/notifications/clear', requireCustomer, (req, res) => {
 // ── GET /portal/payment-proof/:paymentId ─────────────────────────────────────
 // Access-controlled delivery of a GCash payment-proof image. Only the owning
 // customer OR staff/admin may view it. Proof files are NOT served publicly.
-router.get('/payment-proof/:paymentId', (req, res) => {
+router.get('/payment-proof/:paymentId', async (req, res) => {
   const sessionUser = req.session?.user;
   if (!sessionUser) {
     req.session.flash = { error: 'Please sign in to view this file.' };
@@ -983,7 +983,7 @@ router.get('/payment-proof/:paymentId', (req, res) => {
     return res.redirect('/auth/login');
   }
 
-  const payment = db.prepare(`
+  const payment = await db.prepare(`
     SELECT p.proof_image, p.reservation_id, r.customer_id, c.user_id AS owner_user_id
     FROM payments p
     JOIN reservations r ON r.id = p.reservation_id
@@ -1016,11 +1016,11 @@ router.get('/payment-proof/:paymentId', (req, res) => {
 // ── GET /portal/my-reservations ─────────────────────────────────────────────
 router.get('/my-reservations', requireCustomer, (req, res) => {
   const user     = req.session.user;
-  const customer = db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
+  const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
 
   let reservations = [];
   if (customer) {
-    reservations = db.prepare('SELECT r.* FROM reservations r WHERE r.customer_id = ? ORDER BY r.created_at DESC').all(customer.id);
+    reservations = await db.prepare('SELECT r.* FROM reservations r WHERE r.customer_id = ? ORDER BY r.created_at DESC').all(customer.id);
   }
 
   res.render('portal/my-reservations', {
@@ -1033,23 +1033,23 @@ router.get('/my-reservations', requireCustomer, (req, res) => {
 // ── GET /portal/my-reservations/:id ─────────────────────────────────────────
 router.get('/my-reservations/:id', requireCustomer, (req, res) => {
   const user     = req.session.user;
-  const customer = db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
+  const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
 
   if (!customer) {
     req.session.flash = { error: 'No booking found.' };
     return res.redirect('/portal/my-reservations');
   }
 
-  const reservation = db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.id, customer.id);
+  const reservation = await db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.id, customer.id);
   if (!reservation) {
     req.session.flash = { error: 'Booking not found or you do not have permission to view it.' };
     return res.redirect('/portal/my-reservations');
   }
 
-  const items = db.prepare('SELECT * FROM reservation_items WHERE reservation_id = ?').all(reservation.id);
+  const items = await db.prepare('SELECT * FROM reservation_items WHERE reservation_id = ?').all(reservation.id);
 
   // ── FIX 8: Only count non-refunded payments in balance calculation ────────
-  const payments = db.prepare(
+  const payments = await db.prepare(
     "SELECT * FROM payments WHERE reservation_id = ? AND status != 'refunded' ORDER BY payment_date ASC"
   ).all(reservation.id);
 
@@ -1060,17 +1060,17 @@ router.get('/my-reservations/:id', requireCustomer, (req, res) => {
   const isFullyPaid  = totalAmount > 0 && balance <= 0;
   const hasAnyPayment= amountPaid > 0;
 
-  const qrCode = db.prepare('SELECT * FROM qr_codes WHERE reservation_id = ? AND used = 0 ORDER BY created_at DESC LIMIT 1').get(reservation.id);
+  const qrCode = await db.prepare('SELECT * FROM qr_codes WHERE reservation_id = ? AND used = 0 ORDER BY created_at DESC LIMIT 1').get(reservation.id);
 
   // Check for a pending (unverified) customer submission
-  const pendingProof = db.prepare(
+  const pendingProof = await db.prepare(
     "SELECT * FROM payments WHERE reservation_id = ? AND submitted_by = 'customer' AND status = 'received' ORDER BY created_at DESC LIMIT 1"
   ).get(reservation.id);
 
-  const feedback = db.prepare('SELECT * FROM feedback WHERE reservation_id = ? AND customer_id = ?').get(reservation.id, customer.id);
+  const feedback = await db.prepare('SELECT * FROM feedback WHERE reservation_id = ? AND customer_id = ?').get(reservation.id, customer.id);
 
   // Latest refund request for this booking (if any) — drives the refund UI.
-  const refundRequest = db.prepare(
+  const refundRequest = await db.prepare(
     'SELECT * FROM refund_requests WHERE reservation_id = ? ORDER BY created_at DESC LIMIT 1'
   ).get(reservation.id);
   // A refund can be requested when the customer has paid something, the booking
@@ -1095,15 +1095,15 @@ router.get('/my-reservations/:id', requireCustomer, (req, res) => {
 // ── GET /portal/feedback/:reservationId ─────────────────────────────────────
 router.get('/feedback/:reservationId', requireCustomer, (req, res) => {
   const user     = req.session.user;
-  const customer = db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
+  const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
   if (!customer) return res.redirect('/portal');
 
-  const reservation = db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.reservationId, customer.id);
+  const reservation = await db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.reservationId, customer.id);
   if (!reservation || !['completed','checked_in'].includes(reservation.status)) {
     req.session.flash = { error: 'Feedback can only be submitted for completed reservations.' };
     return res.redirect('/portal/my-reservations');
   }
-  const existing = db.prepare('SELECT * FROM feedback WHERE reservation_id = ? AND customer_id = ?').get(reservation.id, customer.id);
+  const existing = await db.prepare('SELECT * FROM feedback WHERE reservation_id = ? AND customer_id = ?').get(reservation.id, customer.id);
   if (existing) {
     req.session.flash = { info: 'You have already submitted feedback for this booking.' };
     return res.redirect('/portal/my-reservations/' + reservation.id);
@@ -1120,13 +1120,13 @@ router.get('/feedback/:reservationId', requireCustomer, (req, res) => {
 // payment records are kept; staff are notified.
 router.post('/my-reservations/:id/cancel', requireCustomer, (req, res) => {
   const user     = req.session.user;
-  const customer = db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
+  const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
   if (!customer) {
     req.session.flash = { error: 'Session error. Please log in again.' };
     return res.redirect('/auth/login');
   }
 
-  const reservation = db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.id, customer.id);
+  const reservation = await db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.id, customer.id);
   if (!reservation) {
     req.session.flash = { error: 'Booking not found.' };
     return res.redirect('/portal/my-reservations');
@@ -1142,26 +1142,26 @@ router.post('/my-reservations/:id/cancel', requireCustomer, (req, res) => {
   }
 
   // Check if customer already paid anything — non-refundable notice
-  const totalPaid = db.prepare(
+  const totalPaid = await db.prepare(
     "SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE reservation_id = ? AND status IN ('received','verified')"
   ).get(reservation.id).t;
   const hasPayment = totalPaid > 0;
 
   db.transaction(() => {
     // Cancel the reservation
-    db.prepare(`UPDATE reservations SET status='cancelled', updated_at=datetime('now') WHERE id=?`).run(reservation.id);
-    db.prepare(`INSERT INTO reservation_status_history (reservation_id, from_status, to_status, notes) VALUES (?,?,?,'Cancelled by guest via portal')`).run(reservation.id, reservation.status, 'cancelled');
+    await db.prepare(`UPDATE reservations SET status='cancelled', updated_at=NOW() WHERE id=?`).run(reservation.id);
+    await db.prepare(`INSERT INTO reservation_status_history (reservation_id, from_status, to_status, notes) VALUES (?,?,?,'Cancelled by guest via portal')`).run(reservation.id, reservation.status, 'cancelled');
 
     // Free up any reserved items so they show as available again immediately
-    const items = db.prepare(`SELECT * FROM reservation_items WHERE reservation_id=?`).all(reservation.id);
+    const items = await db.prepare(`SELECT * FROM reservation_items WHERE reservation_id=?`).all(reservation.id);
     for (const item of items) {
-      if (item.item_type === 'room')    db.prepare(`UPDATE rooms SET status='available', updated_at=datetime('now') WHERE id=?`).run(item.item_id);
-      if (item.item_type === 'venue')   db.prepare(`UPDATE venues SET status='available', updated_at=datetime('now') WHERE id=?`).run(item.item_id);
-      if (item.item_type === 'cottage') db.prepare(`UPDATE cottages SET status='available', updated_at=datetime('now') WHERE id=?`).run(item.item_id);
+      if (item.item_type === 'room')    await db.prepare(`UPDATE rooms SET status='available', updated_at=NOW() WHERE id=?`).run(item.item_id);
+      if (item.item_type === 'venue')   await db.prepare(`UPDATE venues SET status='available', updated_at=NOW() WHERE id=?`).run(item.item_id);
+      if (item.item_type === 'cottage') await db.prepare(`UPDATE cottages SET status='available', updated_at=NOW() WHERE id=?`).run(item.item_id);
     }
 
     // Update guest record if present
-    db.prepare(`UPDATE guests SET status='no_show', updated_at=datetime('now') WHERE reservation_id=?`).run(reservation.id);
+    await db.prepare(`UPDATE guests SET status='no_show', updated_at=NOW() WHERE reservation_id=?`).run(reservation.id);
   })();
 
   // Notify staff of the cancellation
@@ -1195,14 +1195,14 @@ router.post('/my-reservations/:id/cancel', requireCustomer, (req, res) => {
 // Customer submits a refund request. It stays 'pending' until an admin reviews it.
 router.post('/my-reservations/:id/request-refund', requireCustomer, (req, res) => {
   const user     = req.session.user;
-  const customer = db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
+  const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
   if (!customer) { req.session.flash = { error: 'Session error. Please log in again.' }; return res.redirect('/auth/login'); }
 
-  const reservation = db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.id, customer.id);
+  const reservation = await db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.id, customer.id);
   if (!reservation) { req.session.flash = { error: 'Booking not found.' }; return res.redirect('/portal/my-reservations'); }
 
   // How much has the customer actually paid (net of refunds)?
-  const amountPaid = db.prepare(
+  const amountPaid = await db.prepare(
     "SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE reservation_id = ? AND status IN ('received','verified')"
   ).get(reservation.id).t;
 
@@ -1216,7 +1216,7 @@ router.post('/my-reservations/:id/request-refund', requireCustomer, (req, res) =
   }
 
   // Block duplicate open requests.
-  const existing = db.prepare(
+  const existing = await db.prepare(
     "SELECT * FROM refund_requests WHERE reservation_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1"
   ).get(reservation.id);
   if (existing) {
@@ -1237,7 +1237,7 @@ router.post('/my-reservations/:id/request-refund', requireCustomer, (req, res) =
     return res.redirect('/portal/my-reservations/' + reservation.id);
   }
 
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO refund_requests (reservation_id, customer_id, amount, reason, gcash_number, status)
     VALUES (?, ?, ?, ?, ?, 'pending')
   `).run(reservation.id, customer.id, amountPaid, reason, gcashNumber || null);
@@ -1261,8 +1261,8 @@ router.post('/feedback/:reservationId',
   ],
   (req, res) => {
     const user     = req.session.user;
-    const customer = db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
-    const reservation = db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.reservationId, customer?.id);
+    const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
+    const reservation = await db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.reservationId, customer?.id);
     if (!reservation || !customer) return res.redirect('/portal/my-reservations');
 
     const errors = validationResult(req);
@@ -1273,7 +1273,7 @@ router.post('/feedback/:reservationId',
       });
     }
     const { rating, category, comments, suggestions } = req.body;
-    db.prepare('INSERT INTO feedback (reservation_id, customer_id, rating, category, comments, suggestions) VALUES (?,?,?,?,?,?)').run(
+    await db.prepare('INSERT INTO feedback (reservation_id, customer_id, rating, category, comments, suggestions) VALUES (?,?,?,?,?,?)').run(
       reservation.id, customer.id, rating, category || 'overall', comments, suggestions || ''
     );
     req.session.flash = { success: 'Thank you for your feedback!' };
@@ -1307,10 +1307,10 @@ router.post('/inquire',
     }
     const { name, email, phone, subject, message, category } = req.body;
     const customerId = req.session?.user
-      ? (db.prepare('SELECT id FROM customers WHERE user_id = ?').get(req.session.user.id)?.id || null)
+      ? (await db.prepare('SELECT id FROM customers WHERE user_id = ?').get(req.session.user.id)?.id || null)
       : null;
 
-    db.prepare("INSERT INTO inquiries (customer_id, name, email, phone, subject, message, category, source, status) VALUES (?,?,?,?,?,?,?,'website','open')").run(
+    await db.prepare("INSERT INTO inquiries (customer_id, name, email, phone, subject, message, category, source, status) VALUES (?,?,?,?,?,?,?,'website','open')").run(
       customerId, name, email||'', phone||'', subject, message, category||'general'
     );
     req.session.flash = { success: 'Your inquiry has been received. Our team will get back to you shortly.' };
@@ -1335,7 +1335,7 @@ router.get('/calendar/feed', requireCustomerOrGuest, (req, res) => {
   const ACTIVE = "status NOT IN ('cancelled','rejected','completed','no_show')";
 
   // Room & cottage bookings → multi-day all-day spans.
-  const stays = db.prepare(`
+  const stays = await db.prepare(`
     SELECT r.reservation_type, r.check_in_date, r.check_out_date, ri.item_name
     FROM reservations r
     LEFT JOIN reservation_items ri ON ri.reservation_id = r.id AND ri.item_type IN ('room','cottage')
@@ -1345,7 +1345,7 @@ router.get('/calendar/feed', requireCustomerOrGuest, (req, res) => {
   `).all();
 
   // Venue / event bookings → single-day markers.
-  const venueEvents = db.prepare(`
+  const venueEvents = await db.prepare(`
     SELECT r.reservation_type, r.event_date, ri.item_name
     FROM reservations r
     LEFT JOIN reservation_items ri ON ri.reservation_id = r.id AND ri.item_type = 'venue'
@@ -1384,12 +1384,12 @@ router.get('/calendar/feed', requireCustomerOrGuest, (req, res) => {
 // ── GET /portal/my-inquiries ─────────────────────────────────────────────────
 // Lets a logged-in customer see the inquiries they've submitted and their status.
 router.get('/my-inquiries', requireCustomer, (req, res) => {
-  const customer = db.prepare('SELECT * FROM customers WHERE user_id = ?').get(req.session.user.id);
+  const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(req.session.user.id);
 
   // Match inquiries linked to the customer id OR submitted with their email.
   let inquiries = [];
   if (customer) {
-    inquiries = db.prepare(`
+    inquiries = await db.prepare(`
       SELECT * FROM inquiries
       WHERE customer_id = ? OR (email != '' AND email = ?)
       ORDER BY created_at DESC

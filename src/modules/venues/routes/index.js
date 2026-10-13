@@ -13,7 +13,7 @@ const CAN_MANAGE = ['admin', 'staff'];
 
 // Only venue_types that exist on at least one active venue
 function getActiveVenueTypes() {
-  return db.prepare(
+  return await db.prepare(
     `SELECT DISTINCT venue_type FROM venues WHERE is_active = 1 ORDER BY venue_type`
   ).all().map(r => r.venue_type);
 }
@@ -30,8 +30,8 @@ router.get('/', requireAuth, (req, res) => {
   if (status) { where += ` AND status = ?`;     params.push(status); }
   if (type)   { where += ` AND venue_type = ?`; params.push(type); }
 
-  const total  = db.prepare(`SELECT COUNT(*) AS cnt FROM venues ${where}`).get(...params).cnt;
-  const venues = db.prepare(`SELECT * FROM venues ${where} ORDER BY name LIMIT ? OFFSET ?`).all(...params, limit, offset);
+  const total  = await db.prepare(`SELECT COUNT(*) AS cnt FROM venues ${where}`).get(...params).cnt;
+  const venues = await db.prepare(`SELECT * FROM venues ${where} ORDER BY name LIMIT ? OFFSET ?`).all(...params, limit, offset);
 
   const venueTypes = getActiveVenueTypes();
   const statuses   = ['available','reserved','maintenance','unavailable'];
@@ -69,7 +69,7 @@ router.post('/',
     const { name, venue_type, capacity, description, location, price, price_note, amenities, status } = req.body;
     const amenitiesJson = amenities ? JSON.stringify(amenities.split(',').map(a => a.trim()).filter(Boolean)) : '[]';
 
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO venues (name, venue_type, capacity, description, location, price, price_note, amenities, status)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(name, venue_type, capacity, description || '', location || '', price, price_note || '', amenitiesJson, status || 'available');
@@ -82,11 +82,11 @@ router.post('/',
 
 // GET /venues/:id
 router.get('/:id', requireAuth, (req, res) => {
-  const venue = db.prepare(`SELECT * FROM venues WHERE id = ?`).get(req.params.id);
+  const venue = await db.prepare(`SELECT * FROM venues WHERE id = ?`).get(req.params.id);
   if (!venue) { req.session.flash = { error: 'Venue not found.' }; return res.redirect('/venues'); }
   try { venue.amenitiesList = JSON.parse(venue.amenities || '[]'); } catch { venue.amenitiesList = []; }
 
-  const reservations = db.prepare(`
+  const reservations = await db.prepare(`
     SELECT r.*, c.first_name || ' ' || c.last_name AS customer_name
     FROM reservations r
     JOIN reservation_items ri ON ri.reservation_id = r.id
@@ -100,7 +100,7 @@ router.get('/:id', requireAuth, (req, res) => {
 
 // GET /venues/:id/edit
 router.get('/:id/edit', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
-  const venue = db.prepare(`SELECT * FROM venues WHERE id = ?`).get(req.params.id);
+  const venue = await db.prepare(`SELECT * FROM venues WHERE id = ?`).get(req.params.id);
   if (!venue) { req.session.flash = { error: 'Venue not found.' }; return res.redirect('/venues'); }
   const venueTypes = getActiveVenueTypes();
   try { venue.amenitiesStr = JSON.parse(venue.amenities || '[]').join(', '); } catch { venue.amenitiesStr = ''; }
@@ -116,7 +116,7 @@ router.post('/:id/edit',
     body('price').isFloat({ min: 0 }).withMessage('Enter a valid price.'),
   ],
   (req, res) => {
-    const old = db.prepare(`SELECT * FROM venues WHERE id = ?`).get(req.params.id);
+    const old = await db.prepare(`SELECT * FROM venues WHERE id = ?`).get(req.params.id);
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       const venueTypes = getActiveVenueTypes();
@@ -125,8 +125,8 @@ router.post('/:id/edit',
     const { name, venue_type, capacity, description, location, price, price_note, amenities, status } = req.body;
     const amenitiesJson = amenities ? JSON.stringify(amenities.split(',').map(a => a.trim()).filter(Boolean)) : '[]';
 
-    db.prepare(`
-      UPDATE venues SET name=?, venue_type=?, capacity=?, description=?, location=?, price=?, price_note=?, amenities=?, status=?, updated_at=datetime('now')
+    await db.prepare(`
+      UPDATE venues SET name=?, venue_type=?, capacity=?, description=?, location=?, price=?, price_note=?, amenities=?, status=?, updated_at=NOW()
       WHERE id=?
     `).run(name, venue_type, capacity, description || '', location || '', price, price_note || '', amenitiesJson, status, req.params.id);
 

@@ -39,7 +39,7 @@ const qrUpload = multer({
 
 // ── Helper: load all settings into a keyed object ───────────────────────────
 function loadSettings() {
-  const rows = db.prepare('SELECT key, value FROM settings').all();
+  const rows = await db.prepare('SELECT key, value FROM settings').all();
   const s = {};
   for (const r of rows) s[r.key] = r.value;
   return s;
@@ -47,9 +47,9 @@ function loadSettings() {
 
 // ── Helper: upsert a single setting key ─────────────────────────────────────
 function saveSetting(key, value) {
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO settings (key, value) VALUES (?, ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = NOW()
   `).run(key, value);
 }
 
@@ -114,7 +114,7 @@ router.post('/payment',
         { file: mayaQrFile, key: 'maya_qr_path' },
       ].forEach(({ file, key }) => {
         if (file) {
-          const oldQR = db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value || '';
+          const oldQR = await db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value || '';
           if (oldQR) {
             const oldAbs = path.join(process.cwd(), oldQR.replace(/^\//, ''));
             if (fs.existsSync(oldAbs)) fs.unlink(oldAbs, () => {});
@@ -133,7 +133,7 @@ router.post('/payment',
 // ── POST /settings/payment/remove-qr ─────────────────────────────────────────
 // Remove the GCash QR image
 router.post('/payment/remove-qr', requireAuth, ADMIN_ONLY, (req, res) => {
-  const oldQR = db.prepare("SELECT value FROM settings WHERE key = 'gcash_qr_path'").get()?.value || '';
+  const oldQR = await db.prepare("SELECT value FROM settings WHERE key = 'gcash_qr_path'").get()?.value || '';
   if (oldQR) {
     const oldAbs = path.join(process.cwd(), oldQR.replace(/^\//, ''));
     if (fs.existsSync(oldAbs)) fs.unlink(oldAbs, () => {});
@@ -144,7 +144,7 @@ router.post('/payment/remove-qr', requireAuth, ADMIN_ONLY, (req, res) => {
 });
 
 router.post('/payment/remove-maya-qr', requireAuth, ADMIN_ONLY, (req, res) => {
-  const oldQR = db.prepare("SELECT value FROM settings WHERE key = 'maya_qr_path'").get()?.value || '';
+  const oldQR = await db.prepare("SELECT value FROM settings WHERE key = 'maya_qr_path'").get()?.value || '';
   if (oldQR) {
     const oldAbs = path.join(process.cwd(), oldQR.replace(/^\//, ''));
     if (fs.existsSync(oldAbs)) fs.unlink(oldAbs, () => {});

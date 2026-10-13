@@ -113,11 +113,45 @@ router.post('/login',
     }
 
     const { email, password } = req.body;
-    const user = await db.prepare(`
-      SELECT u.*, r.name AS role, r.label AS role_label
-      FROM users u JOIN roles r ON r.id = u.role_id
-      WHERE u.email = ? AND u.is_active = 1
-    `).get(email);
+    
+    // Simple query for Firestore - get user by email
+    let user;
+    try {
+      const usersSnapshot = await db.getFirestore().collection('users')
+        .where('email', '==', email)
+        .where('is_active', '==', 1)
+        .limit(1)
+        .get();
+      
+      if (usersSnapshot.empty) {
+        return res.render('auth/login', {
+          title: 'Sign In – Balai-Reserve', layout: 'layouts/auth', loadFirebase: true,
+          firebaseConfig: FIREBASE_CLIENT_CONFIG,
+          errors: [{ msg: 'Invalid email or password. Please try again.' }],
+          old: { email },
+        });
+      }
+      
+      user = { id: usersSnapshot.docs[0].id, ...usersSnapshot.docs[0].data() };
+      
+      // Get role info
+      const roleDoc = await db.getFirestore().collection('roles').doc(String(user.role_id)).get();
+      if (roleDoc.exists) {
+        user.role = roleDoc.data().name;
+        user.role_label = roleDoc.data().label;
+      } else {
+        user.role = 'customer';
+        user.role_label = 'Customer';
+      }
+    } catch (error) {
+      console.error('Login error:', error);
+      return res.render('auth/login', {
+        title: 'Sign In – Balai-Reserve', layout: 'layouts/auth', loadFirebase: true,
+        firebaseConfig: FIREBASE_CLIENT_CONFIG,
+        errors: [{ msg: 'An error occurred. Please try again.' }],
+        old: { email },
+      });
+    }
 
     if (!user || !user.password_hash || !bcrypt.compareSync(password, user.password_hash)) {
       return res.render('auth/login', {
@@ -138,7 +172,15 @@ router.post('/login',
       });
     }
 
-    await db.prepare(`UPDATE users SET last_login = datetime('now') WHERE id = ?`).run(user.id);
+    // Update last login
+    try {
+      await db.getFirestore().collection('users').doc(String(user.id)).update({
+        last_login: new Date().toISOString()
+      });
+    } catch (error) {
+      console.error('Error updating last_login:', error);
+    }
+    
     req.session.user = buildSessionUser(user);
     return postLoginRedirect(req, res, user.role);
   }

@@ -77,19 +77,22 @@ class Statement {
  */
 const database = {
   prepare(sql) {
-    // Convert SQLite syntax to Postgres
-    let pgSql = sql
-      // Replace datetime('now') with NOW()
+    // DON'T convert placeholders - let the caller use $1, $2, etc. directly for Postgres
+    // OR ? for SQLite compatibility which we'll convert here
+    let pgSql = sql;
+    let paramCount = 0;
+    
+    // Only convert if using ? placeholders (SQLite style)
+    if (sql.includes('?') && !sql.includes('$')) {
+      pgSql = sql.replace(/\?/g, () => `$${++paramCount}`);
+    }
+    
+    // Convert SQLite functions to Postgres
+    pgSql = pgSql
       .replace(/datetime\('now'\)/gi, 'NOW()')
-      // Replace || concatenation with CONCAT()
-      .replace(/(\w+)\s*\|\|\s*'([^']+)'\s*\|\|\s*(\w+)/g, "CONCAT($1, '$2', $3)")
-      // Replace SUBSTR with SUBSTRING
-      .replace(/SUBSTR\(/gi, 'SUBSTRING(')
-      // Replace ? placeholders with $1, $2, etc.
-      .replace(/\?/g, () => {
-        let count = (pgSql.match(/\$/g) || []).length;
-        return `$${count + 1}`;
-      });
+      .replace(/date\('now'/gi, "CURRENT_DATE")
+      .replace(/\|\|/g, ' || ')  // Keep concatenation as-is
+      .replace(/SUBSTR\(/gi, 'SUBSTRING(');
 
     return new Statement(pgSql);
   },

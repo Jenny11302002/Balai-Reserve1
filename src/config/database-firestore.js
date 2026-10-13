@@ -5,10 +5,20 @@
  */
 'use strict';
 
-// const { db, FieldValue } = require('./firestore');
-
 // DEPRECATED - Using Postgres now
-throw new Error('Firestore adapter is deprecated. Use Postgres instead.');
+// This file is kept for compatibility but should not be used
+
+module.exports = {
+  prepare: () => {
+    throw new Error('Firestore adapter is deprecated. Application should be using Postgres.');
+  },
+  query: () => {
+    throw new Error('Firestore adapter is deprecated. Application should be using Postgres.');
+  },
+  pragma: () => {},
+  close: () => {},
+  getFirestore: () => null
+};
 
 /**
  * Generate a unique ID (Firestore auto-generates, but we need sequential-like IDs for compatibility)

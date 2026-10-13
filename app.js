@@ -167,7 +167,7 @@ xianfire.register(app, { viewsDir: path.join(__dirname, 'views') });
 app.use(xianHelpersMiddleware);
 
 // ── Per-request globals (single authoritative block) ──────────────────────
-app.use((req, res, next) => {
+app.use(async (req, res, next) => {
   const user = req.session?.user || null;
 
   // Flash — read once, clear immediately
@@ -190,13 +190,17 @@ app.use((req, res, next) => {
     try {
       res.locals.unreadNotifCount      = getUnreadCount(user.id);
       res.locals.recentNotifications   = getRecentNotifications(user.id, 6);
-      res.locals.pendingInquiriesCount = db.prepare(
+      
+      const inquiriesResult = await db.prepare(
         `SELECT COUNT(*) AS c FROM inquiries WHERE status IN ('open','in_progress')`
-      ).get().c || 0;
+      ).get();
+      res.locals.pendingInquiriesCount = inquiriesResult?.c || 0;
+      
       // Count reservations that need staff action: pending review OR awaiting payment verification
-      res.locals.pendingReservationsCount = db.prepare(
+      const reservationsResult = await db.prepare(
         `SELECT COUNT(*) AS c FROM reservations WHERE status IN ('pending','awaiting_payment')`
-      ).get().c || 0;
+      ).get();
+      res.locals.pendingReservationsCount = reservationsResult?.c || 0;
     } catch { /* non-critical — never let badge queries crash a page */ }
   }
 

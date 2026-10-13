@@ -62,6 +62,9 @@ const app  = express();
 const PORT = process.env.PORT || 3000;
 const isDev= process.env.NODE_ENV !== 'production';
 
+// ── Trust Proxy (required for Vercel and rate limiting) ────────────────────
+app.set('trust proxy', 1);
+
 // ── Security Headers ───────────────────────────────────────────────────────
 app.use(helmet({
   contentSecurityPolicy: {
@@ -216,22 +219,22 @@ app.get('/', (req, res) => {
 
   const featuredRooms = db.prepare(
     "SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.is_active=1 ORDER BY r.price LIMIT 4"
-  ).all();
+  ).all() || [];
   for (const r of featuredRooms) {
     try { r.imagesList = JSON.parse(r.images || '[]'); } catch { r.imagesList = []; }
   }
 
-  const featuredVenues = db.prepare("SELECT * FROM venues WHERE is_active=1 ORDER BY price LIMIT 3").all();
+  const featuredVenues = db.prepare("SELECT * FROM venues WHERE is_active=1 ORDER BY price LIMIT 3").all() || [];
   for (const v of featuredVenues) {
     try { v.imagesList = JSON.parse(v.images || '[]'); } catch { v.imagesList = []; }
   }
 
-  const featuredCottages = db.prepare("SELECT * FROM cottages WHERE is_active=1 ORDER BY price LIMIT 3").all();
+  const featuredCottages = db.prepare("SELECT * FROM cottages WHERE is_active=1 ORDER BY price LIMIT 3").all() || [];
   for (const c of featuredCottages) {
     try { c.imagesList = JSON.parse(c.images || '[]'); } catch { c.imagesList = []; }
   }
 
-  const eventPackages = db.prepare("SELECT * FROM event_packages WHERE is_active=1 ORDER BY price").all();
+  const eventPackages = db.prepare("SELECT * FROM event_packages WHERE is_active=1 ORDER BY price").all() || [];
   for (const p of eventPackages) {
     try { p.inclusionsList = JSON.parse(p.inclusions || '[]'); } catch { p.inclusionsList = []; }
   }
@@ -245,10 +248,10 @@ app.get('/', (req, res) => {
     WHERE f.is_public = 1 AND f.rating >= 4
     ORDER BY f.rating DESC, f.created_at DESC
     LIMIT 6
-  `).all();
+  `).all() || [];
 
   // Settings for contact info — use 'siteSettings' to avoid clashing with Express's settings.views
-  const settingsRows = db.prepare("SELECT key, value FROM settings").all();
+  const settingsRows = db.prepare("SELECT key, value FROM settings").all() || [];
   const siteSettings = {};
   settingsRows.forEach(s => { siteSettings[s.key] = s.value; });
 

@@ -221,8 +221,246 @@ CREATE TABLE IF NOT EXISTS refund_requests (
   created_at     TIMESTAMP DEFAULT NOW()
 );
 
--- Additional tables following the same pattern...
--- (Guests, Check-ins, Check-outs, QR Codes, Feedback, Inquiries, etc.)
+-- ─── GUESTS ───────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS guests (
+  id              SERIAL PRIMARY KEY,
+  reservation_id  INTEGER NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
+  first_name      VARCHAR(255) NOT NULL,
+  last_name       VARCHAR(255) NOT NULL,
+  email           VARCHAR(255),
+  phone           VARCHAR(50),
+  age             INTEGER,
+  is_main_guest   INTEGER NOT NULL DEFAULT 0,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── CHECK INS ─────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS check_ins (
+  id              SERIAL PRIMARY KEY,
+  reservation_id  INTEGER NOT NULL REFERENCES reservations(id),
+  checked_in_at   TIMESTAMP NOT NULL,
+  checked_in_by   INTEGER REFERENCES users(id),
+  actual_guests   INTEGER,
+  id_verified     INTEGER DEFAULT 0,
+  notes           TEXT,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── CHECK OUTS ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS check_outs (
+  id              SERIAL PRIMARY KEY,
+  reservation_id  INTEGER NOT NULL REFERENCES reservations(id),
+  checked_out_at  TIMESTAMP NOT NULL,
+  checked_out_by  INTEGER REFERENCES users(id),
+  condition_notes TEXT,
+  damages         TEXT,
+  additional_charges DECIMAL(10,2) DEFAULT 0,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── QR CODES ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS qr_codes (
+  id              SERIAL PRIMARY KEY,
+  reservation_id  INTEGER NOT NULL REFERENCES reservations(id),
+  qr_code_data    TEXT NOT NULL,
+  qr_image_path   TEXT,
+  is_used         INTEGER NOT NULL DEFAULT 0,
+  used_at         TIMESTAMP,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── FEEDBACK ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS feedback (
+  id              SERIAL PRIMARY KEY,
+  reservation_id  INTEGER REFERENCES reservations(id),
+  customer_id     INTEGER REFERENCES customers(id),
+  rating          INTEGER,
+  comment         TEXT,
+  response        TEXT,
+  responded_by    INTEGER REFERENCES users(id),
+  responded_at    TIMESTAMP,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── INQUIRIES ─────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS inquiries (
+  id              SERIAL PRIMARY KEY,
+  name            VARCHAR(255) NOT NULL,
+  email           VARCHAR(255) NOT NULL,
+  phone           VARCHAR(50),
+  subject         VARCHAR(255),
+  message         TEXT NOT NULL,
+  status          VARCHAR(20) DEFAULT 'new',
+  assigned_to     INTEGER REFERENCES users(id),
+  response        TEXT,
+  responded_at    TIMESTAMP,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── CRM ACTIVITIES ────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS crm_activities (
+  id              SERIAL PRIMARY KEY,
+  customer_id     INTEGER NOT NULL REFERENCES customers(id),
+  activity_type   VARCHAR(50) NOT NULL,
+  subject         VARCHAR(255),
+  description     TEXT,
+  status          VARCHAR(20) DEFAULT 'pending',
+  assigned_to     INTEGER REFERENCES users(id),
+  due_date        DATE,
+  completed_at    TIMESTAMP,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── SALES CALLS ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS sales_calls (
+  id              SERIAL PRIMARY KEY,
+  customer_id     INTEGER NOT NULL REFERENCES customers(id),
+  called_by       INTEGER REFERENCES users(id),
+  call_date       TIMESTAMP NOT NULL,
+  duration        INTEGER,
+  outcome         VARCHAR(50),
+  notes           TEXT,
+  follow_up_date  DATE,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── MARKETING EMAILS ──────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS marketing_emails (
+  id              SERIAL PRIMARY KEY,
+  campaign_name   VARCHAR(255) NOT NULL,
+  subject         VARCHAR(255) NOT NULL,
+  body            TEXT NOT NULL,
+  sent_to         TEXT,
+  sent_count      INTEGER DEFAULT 0,
+  sent_at         TIMESTAMP,
+  created_by      INTEGER REFERENCES users(id),
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── SUPPORT TICKETS ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS support_tickets (
+  id              SERIAL PRIMARY KEY,
+  customer_id     INTEGER REFERENCES customers(id),
+  subject         VARCHAR(255) NOT NULL,
+  description     TEXT NOT NULL,
+  priority        VARCHAR(20) DEFAULT 'medium',
+  status          VARCHAR(20) DEFAULT 'open',
+  assigned_to     INTEGER REFERENCES users(id),
+  resolved_at     TIMESTAMP,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── INVENTORY CATEGORIES ──────────────────────────────────────
+CREATE TABLE IF NOT EXISTS inventory_categories (
+  id              SERIAL PRIMARY KEY,
+  name            VARCHAR(255) NOT NULL UNIQUE,
+  description     TEXT,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── INVENTORY ITEMS ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS inventory_items (
+  id              SERIAL PRIMARY KEY,
+  category_id     INTEGER REFERENCES inventory_categories(id),
+  item_code       VARCHAR(50) UNIQUE,
+  name            VARCHAR(255) NOT NULL,
+  description     TEXT,
+  unit            VARCHAR(50),
+  quantity        INTEGER DEFAULT 0,
+  min_quantity    INTEGER DEFAULT 0,
+  unit_cost       DECIMAL(10,2) DEFAULT 0,
+  location        VARCHAR(255),
+  status          VARCHAR(20) DEFAULT 'available',
+  created_at      TIMESTAMP DEFAULT NOW(),
+  updated_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── INVENTORY TRANSACTIONS ────────────────────────────────────
+CREATE TABLE IF NOT EXISTS inventory_transactions (
+  id              SERIAL PRIMARY KEY,
+  item_id         INTEGER NOT NULL REFERENCES inventory_items(id),
+  transaction_type VARCHAR(20) NOT NULL,
+  quantity        INTEGER NOT NULL,
+  reference_type  VARCHAR(50),
+  reference_id    INTEGER,
+  notes           TEXT,
+  performed_by    INTEGER REFERENCES users(id),
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── EQUIPMENT ─────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS equipment (
+  id              SERIAL PRIMARY KEY,
+  name            VARCHAR(255) NOT NULL,
+  equipment_code  VARCHAR(50) UNIQUE,
+  description     TEXT,
+  quantity        INTEGER DEFAULT 0,
+  price           DECIMAL(10,2) DEFAULT 0,
+  status          VARCHAR(20) DEFAULT 'available',
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── EQUIPMENT ASSIGNMENTS ─────────────────────────────────────
+CREATE TABLE IF NOT EXISTS equipment_assignments (
+  id              SERIAL PRIMARY KEY,
+  equipment_id    INTEGER NOT NULL REFERENCES equipment(id),
+  reservation_id  INTEGER NOT NULL REFERENCES reservations(id),
+  quantity        INTEGER NOT NULL DEFAULT 1,
+  assigned_at     TIMESTAMP DEFAULT NOW(),
+  returned_at     TIMESTAMP,
+  condition       TEXT
+);
+
+-- ─── FOLLOW UPS ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS follow_ups (
+  id              SERIAL PRIMARY KEY,
+  customer_id     INTEGER NOT NULL REFERENCES customers(id),
+  type            VARCHAR(50) NOT NULL,
+  subject         VARCHAR(255),
+  notes           TEXT,
+  due_date        DATE NOT NULL,
+  status          VARCHAR(20) DEFAULT 'pending',
+  completed_at    TIMESTAMP,
+  assigned_to     INTEGER REFERENCES users(id),
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── AUDIT LOGS ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id              SERIAL PRIMARY KEY,
+  user_id         INTEGER REFERENCES users(id),
+  action          VARCHAR(100) NOT NULL,
+  table_name      VARCHAR(100),
+  record_id       INTEGER,
+  old_values      TEXT,
+  new_values      TEXT,
+  ip_address      VARCHAR(50),
+  user_agent      TEXT,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── AI INSIGHTS ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS ai_insights (
+  id              SERIAL PRIMARY KEY,
+  insight_type    VARCHAR(50) NOT NULL,
+  title           VARCHAR(255) NOT NULL,
+  description     TEXT,
+  data            TEXT,
+  severity        VARCHAR(20) DEFAULT 'info',
+  is_read         INTEGER DEFAULT 0,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
+
+-- ─── RESERVATION STATUS HISTORY ────────────────────────────────
+CREATE TABLE IF NOT EXISTS reservation_status_history (
+  id              SERIAL PRIMARY KEY,
+  reservation_id  INTEGER NOT NULL REFERENCES reservations(id) ON DELETE CASCADE,
+  from_status     VARCHAR(50),
+  to_status       VARCHAR(50) NOT NULL,
+  changed_by      INTEGER REFERENCES users(id),
+  reason          TEXT,
+  created_at      TIMESTAMP DEFAULT NOW()
+);
 
 -- ─── SETTINGS ──────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS settings (

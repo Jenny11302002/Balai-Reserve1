@@ -75,14 +75,14 @@ function requireCustomer(req, res, next) {
 }
 
 // ── Shared portal locals ────────────────────────────────────────────────────
-router.use((req, res, next) => {
+router.use(async (req, res, next) => {
   res.locals.portalLayout = 'layouts/portal';
 
   // Load payment account settings so every portal view can show real account details.
   // Defaults are shown if the setting key hasn't been configured yet.
   try {
     const settingKeys = ['gcash_number','gcash_name','maya_number','maya_name','bank_bdo','bank_bpi','bank_name','gcash_qr_path','maya_qr_path'];
-    const rows = db.prepare(
+    const rows = await db.prepare(
       `SELECT key, value FROM settings WHERE key IN (${settingKeys.map(() => '?').join(',')})`
     ).all(...settingKeys);
     const pm = {};

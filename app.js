@@ -12,7 +12,6 @@ require('dotenv').config();
 const express     = require('express');
 const path        = require('path');
 const session     = require('express-session');
-const SqliteStore = require('better-sqlite3-session-store')(session);
 const cookieParser= require('cookie-parser');
 const helmet      = require('helmet');
 const morgan      = require('morgan');
@@ -132,11 +131,9 @@ app.use(express.json({ limit: '10mb' }));
 app.use(cookieParser());
 
 // ── Session ────────────────────────────────────────────────────────────────
+// Using memory store for serverless (Vercel). For production with persistent
+// sessions, consider using @google-cloud/firestore-store or similar.
 app.use(session({
-  store: new SqliteStore({
-    client:  db,
-    expired: { clear: true, intervalMs: 900000 },
-  }),
   secret:            process.env.SESSION_SECRET || 'balai-reserve-change-me',
   resave:            false,
   saveUninitialized: false,

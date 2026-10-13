@@ -58,7 +58,16 @@ class Statement {
   async run(...bindParams) {
     const params = bindParams.length > 0 ? bindParams : this.params;
     try {
-      const result = await pool.query(this.sql, params);
+      // For INSERT statements, add RETURNING id to get the last insert ID
+      let sql = this.sql;
+      const isInsert = sql.trim().toUpperCase().startsWith('INSERT');
+      
+      if (isInsert && !sql.toUpperCase().includes('RETURNING')) {
+        sql = sql.trim().replace(/;?\s*$/, '') + ' RETURNING id';
+      }
+      
+      const result = await pool.query(sql, params);
+      
       return {
         changes: result.rowCount,
         lastInsertRowid: result.rows[0]?.id || null,

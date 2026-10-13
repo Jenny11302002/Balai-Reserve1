@@ -190,18 +190,31 @@ app.use(async (req, res, next) => {
     try {
       res.locals.unreadNotifCount      = getUnreadCount(user.id);
       res.locals.recentNotifications   = getRecentNotifications(user.id, 6);
-      
+    } catch (err) {
+      // Notification queries may fail if tables don't exist yet
+      console.error('Notification query error:', err.message);
+    }
+    
+    try {
       const inquiriesResult = await db.prepare(
         `SELECT COUNT(*) AS c FROM inquiries WHERE status IN ('open','in_progress')`
       ).get();
       res.locals.pendingInquiriesCount = inquiriesResult?.c || 0;
-      
+    } catch (err) {
+      // May fail if inquiries table doesn't exist yet
+      console.error('Inquiries count error:', err.message);
+    }
+    
+    try {
       // Count reservations that need staff action: pending review OR awaiting payment verification
       const reservationsResult = await db.prepare(
         `SELECT COUNT(*) AS c FROM reservations WHERE status IN ('pending','awaiting_payment')`
       ).get();
       res.locals.pendingReservationsCount = reservationsResult?.c || 0;
-    } catch { /* non-critical — never let badge queries crash a page */ }
+    } catch (err) {
+      // May fail if reservations table doesn't exist yet
+      console.error('Reservations count error:', err.message);
+    }
   }
 
   next();
@@ -215,12 +228,13 @@ app.get('/favicon.ico', (req, res) => res.redirect('/favicon.svg'));
 
 // ── Root: show public landing page to everyone (auth status changes nav only) ────
 app.get('/', async (req, res) => {
-  // ── Fetch real data from DB for the landing page ──────────────────────
-  const totalRooms    = (await db.prepare("SELECT COUNT(*) AS c FROM rooms    WHERE is_active=1").get())?.c || 0;
-  const totalVenues   = (await db.prepare("SELECT COUNT(*) AS c FROM venues   WHERE is_active=1").get())?.c || 0;
-  const totalCottages = (await db.prepare("SELECT COUNT(*) AS c FROM cottages WHERE is_active=1").get())?.c || 0;
-  const totalPackages = (await db.prepare("SELECT COUNT(*) AS c FROM event_packages WHERE is_active=1").get())?.c || 0;
-  const avgRatingRow  = await db.prepare("SELECT ROUND(AVG(rating),1) AS a FROM feedback").get();
+  try {
+    // ── Fetch real data from DB for the landing page ──────────────────────
+    const totalRooms    = (await db.prepare("SELECT COUNT(*) AS c FROM rooms    WHERE is_active=1").get())?.c || 0;
+    const totalVenues   = (await db.prepare("SELECT COUNT(*) AS c FROM venues   WHERE is_active=1").get())?.c || 0;
+    const totalCottages = (await db.prepare("SELECT COUNT(*) AS c FROM cottages WHERE is_active=1").get())?.c || 0;
+    const totalPackages = (await db.prepare("SELECT COUNT(*) AS c FROM event_packages WHERE is_active=1").get())?.c || 0;
+    const avgRatingRow  = await db.prepare("SELECT ROUND(AVG(rating),1) AS a FROM feedback").get();
 
   const featuredRooms = (await db.prepare(
     "SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.is_active=1 ORDER BY r.price LIMIT 4"
@@ -255,19 +269,29 @@ app.get('/', async (req, res) => {
     LIMIT 6
   `).all()) || [];
 
-  // Settings for contact info — use 'siteSettings' to avoid clashing with Express's settings.views
-  const settingsRows = (await db.prepare("SELECT key, value FROM settings").all()) || [];
-  const siteSettings = {};
-  settingsRows.forEach(s => { siteSettings[s.key] = s.value; });
+    // Settings for contact info — use 'siteSettings' to avoid clashing with Express's settings.views
+    const settingsRows = (await db.prepare("SELECT key, value FROM settings").all()) || [];
+    const siteSettings = {};
+    settingsRows.forEach(s => { siteSettings[s.key] = s.value; });
 
-  res.render('landing/index', {
-    title:  'Balai-Reserve — Your Home Away From Home',
-    layout: 'layouts/landing',
-    stats: { totalRooms, totalVenues, totalCottages, totalPackages, avgRating: avgRatingRow?.a || '4.5' },
-    featuredRooms, featuredVenues, featuredCottages,
-    eventPackages, reviews,
-    site: siteSettings,   // 'settings' is reserved by Express — use 'site' instead
-  });
+    res.render('landing/index', {
+      title:  'Balai-Reserve — Your Home Away From Home',
+      layout: 'layouts/landing',
+      stats: { totalRooms, totalVenues, totalCottages, totalPackages, avgRating: avgRatingRow?.a || '4.5' },
+      featuredRooms, featuredVenues, featuredCottages,
+      eventPackages, reviews,
+      site: siteSettings,   // 'settings' is reserved by Express — use 'site' instead
+    });
+  } catch (error) {
+    console.error('Homepage error:', error.message);
+    // Show a friendly message if database isn't set up yet
+    res.status(500).render('errors/500', {
+      title: 'Service Unavailable',
+      layout: 'layouts/landing',
+      message: 'The service is being set up. Please try again in a moment.',
+      error: process.env.NODE_ENV === 'development' ? error : {},
+    });
+  }
 });
 
 // Reconcile expired reservations before every application request so

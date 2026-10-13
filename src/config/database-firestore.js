@@ -1,10 +1,14 @@
 /**
  * Database Adapter - Firestore with SQLite-like API
  * Provides a SQLite-compatible interface for Firestore operations
+ * DEPRECATED: Now using Postgres
  */
 'use strict';
 
-const { db, FieldValue } = require('./firestore');
+// const { db, FieldValue } = require('./firestore');
+
+// DEPRECATED - Using Postgres now
+throw new Error('Firestore adapter is deprecated. Use Postgres instead.');
 
 /**
  * Generate a unique ID (Firestore auto-generates, but we need sequential-like IDs for compatibility)

@@ -6,6 +6,12 @@
 
 const { Pool } = require('pg');
 
+if (!process.env.DATABASE_URL) {
+  throw new Error('DATABASE_URL environment variable is required for Postgres mode');
+}
+
+console.log('Initializing Postgres connection pool...');
+
 // Create connection pool
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
@@ -14,6 +20,8 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 10000,
 });
+
+console.log('✅ Postgres pool created');
 
 // Handle pool errors
 pool.on('error', (err) => {

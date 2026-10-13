@@ -10,6 +10,7 @@
     "seed": "node src/database/seed.js",
     "setup": "node src/database/migrate.js && node src/database/seed.js",
     "fresh-start": "node src/database/fresh-start.js",
+    "migrate-to-firestore": "node src/database/migrate-to-firestore.js",
     "test": "node --test"
   },
   "dependencies": {

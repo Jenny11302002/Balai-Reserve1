@@ -209,38 +209,38 @@ app.use(attachAudit(db));
 app.get('/favicon.ico', (req, res) => res.redirect('/favicon.svg'));
 
 // ── Root: show public landing page to everyone (auth status changes nav only) ────
-app.get('/', (req, res) => {
+app.get('/', async (req, res) => {
   // ── Fetch real data from DB for the landing page ──────────────────────
-  const totalRooms    = db.prepare("SELECT COUNT(*) AS c FROM rooms    WHERE is_active=1").get().c;
-  const totalVenues   = db.prepare("SELECT COUNT(*) AS c FROM venues   WHERE is_active=1").get().c;
-  const totalCottages = db.prepare("SELECT COUNT(*) AS c FROM cottages WHERE is_active=1").get().c;
-  const totalPackages = db.prepare("SELECT COUNT(*) AS c FROM event_packages WHERE is_active=1").get().c;
-  const avgRatingRow  = db.prepare("SELECT ROUND(AVG(rating),1) AS a FROM feedback").get();
+  const totalRooms    = (await db.prepare("SELECT COUNT(*) AS c FROM rooms    WHERE is_active=1").get())?.c || 0;
+  const totalVenues   = (await db.prepare("SELECT COUNT(*) AS c FROM venues   WHERE is_active=1").get())?.c || 0;
+  const totalCottages = (await db.prepare("SELECT COUNT(*) AS c FROM cottages WHERE is_active=1").get())?.c || 0;
+  const totalPackages = (await db.prepare("SELECT COUNT(*) AS c FROM event_packages WHERE is_active=1").get())?.c || 0;
+  const avgRatingRow  = await db.prepare("SELECT ROUND(AVG(rating),1) AS a FROM feedback").get();
 
-  const featuredRooms = db.prepare(
+  const featuredRooms = (await db.prepare(
     "SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.is_active=1 ORDER BY r.price LIMIT 4"
-  ).all() || [];
+  ).all()) || [];
   for (const r of featuredRooms) {
     try { r.imagesList = JSON.parse(r.images || '[]'); } catch { r.imagesList = []; }
   }
 
-  const featuredVenues = db.prepare("SELECT * FROM venues WHERE is_active=1 ORDER BY price LIMIT 3").all() || [];
+  const featuredVenues = (await db.prepare("SELECT * FROM venues WHERE is_active=1 ORDER BY price LIMIT 3").all()) || [];
   for (const v of featuredVenues) {
     try { v.imagesList = JSON.parse(v.images || '[]'); } catch { v.imagesList = []; }
   }
 
-  const featuredCottages = db.prepare("SELECT * FROM cottages WHERE is_active=1 ORDER BY price LIMIT 3").all() || [];
+  const featuredCottages = (await db.prepare("SELECT * FROM cottages WHERE is_active=1 ORDER BY price LIMIT 3").all()) || [];
   for (const c of featuredCottages) {
     try { c.imagesList = JSON.parse(c.images || '[]'); } catch { c.imagesList = []; }
   }
 
-  const eventPackages = db.prepare("SELECT * FROM event_packages WHERE is_active=1 ORDER BY price").all() || [];
+  const eventPackages = (await db.prepare("SELECT * FROM event_packages WHERE is_active=1 ORDER BY price").all()) || [];
   for (const p of eventPackages) {
     try { p.inclusionsList = JSON.parse(p.inclusions || '[]'); } catch { p.inclusionsList = []; }
   }
 
   // Public reviews (most recent, 5-star first, max 6)
-  const reviews = db.prepare(`
+  const reviews = (await db.prepare(`
     SELECT f.rating, f.comments, f.created_at,
            cu.first_name || ' ' || SUBSTR(cu.last_name,1,1) || '.' AS customer_name
     FROM feedback f
@@ -248,10 +248,10 @@ app.get('/', (req, res) => {
     WHERE f.is_public = 1 AND f.rating >= 4
     ORDER BY f.rating DESC, f.created_at DESC
     LIMIT 6
-  `).all() || [];
+  `).all()) || [];
 
   // Settings for contact info — use 'siteSettings' to avoid clashing with Express's settings.views
-  const settingsRows = db.prepare("SELECT key, value FROM settings").all() || [];
+  const settingsRows = (await db.prepare("SELECT key, value FROM settings").all()) || [];
   const siteSettings = {};
   settingsRows.forEach(s => { siteSettings[s.key] = s.value; });
 

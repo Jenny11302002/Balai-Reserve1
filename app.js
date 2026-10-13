@@ -267,8 +267,12 @@ app.get('/', async (req, res) => {
 
 // Reconcile expired reservations before every application request so
 // availability reflects passed dates immediately, even without a manual checkout.
-app.use((req, res, next) => {
-  reconcileExpiredReservations(db);
+app.use(async (req, res, next) => {
+  try {
+    await reconcileExpiredReservations(db);
+  } catch (err) {
+    console.error('[Reconcile] Error reconciling expired reservations:', err);
+  }
   next();
 });
 

@@ -279,6 +279,10 @@ app.use(async (req, res, next) => {
 // ── Authentication ─────────────────────────────────────────────────────────
 app.use('/auth', authRoutes);
 
+// ── ONE-TIME SETUP (DELETE AFTER USE) ──────────────────────────────────────
+const setupRoutes = require('./src/modules/setup/routes');
+app.use('/setup', setupRoutes);
+
 // ── Customer Portal (public browse + authenticated self-service) ───────────
 app.use('/portal', portalRoutes);
 

@@ -23,12 +23,52 @@ router.get('/initialize-database-now', async (req, res) => {
 
     res.write('<html><body><h1>Database Setup</h1><pre>');
     
+    // Drop existing tables first to start fresh
+    res.write('Dropping existing tables (if any)...\n');
+    await pool.query(`
+      DROP TABLE IF EXISTS reservation_status_history CASCADE;
+      DROP TABLE IF EXISTS ai_insights CASCADE;
+      DROP TABLE IF EXISTS audit_logs CASCADE;
+      DROP TABLE IF EXISTS follow_ups CASCADE;
+      DROP TABLE IF EXISTS notifications CASCADE;
+      DROP TABLE IF EXISTS equipment_assignments CASCADE;
+      DROP TABLE IF EXISTS equipment CASCADE;
+      DROP TABLE IF EXISTS inventory_transactions CASCADE;
+      DROP TABLE IF EXISTS inventory_items CASCADE;
+      DROP TABLE IF EXISTS inventory_categories CASCADE;
+      DROP TABLE IF EXISTS support_tickets CASCADE;
+      DROP TABLE IF EXISTS marketing_emails CASCADE;
+      DROP TABLE IF EXISTS sales_calls CASCADE;
+      DROP TABLE IF EXISTS crm_activities CASCADE;
+      DROP TABLE IF EXISTS inquiries CASCADE;
+      DROP TABLE IF EXISTS feedback CASCADE;
+      DROP TABLE IF EXISTS qr_codes CASCADE;
+      DROP TABLE IF EXISTS check_outs CASCADE;
+      DROP TABLE IF EXISTS check_ins CASCADE;
+      DROP TABLE IF EXISTS guests CASCADE;
+      DROP TABLE IF EXISTS refund_requests CASCADE;
+      DROP TABLE IF EXISTS payments CASCADE;
+      DROP TABLE IF EXISTS events CASCADE;
+      DROP TABLE IF EXISTS reservation_items CASCADE;
+      DROP TABLE IF EXISTS reservations CASCADE;
+      DROP TABLE IF EXISTS event_packages CASCADE;
+      DROP TABLE IF EXISTS cottages CASCADE;
+      DROP TABLE IF EXISTS venues CASCADE;
+      DROP TABLE IF EXISTS rooms CASCADE;
+      DROP TABLE IF EXISTS room_types CASCADE;
+      DROP TABLE IF EXISTS customers CASCADE;
+      DROP TABLE IF EXISTS users CASCADE;
+      DROP TABLE IF EXISTS roles CASCADE;
+      DROP TABLE IF EXISTS settings CASCADE;
+    `);
+    res.write('✅ Dropped old tables\n\n');
+    
     // Create schema
-    res.write('Creating schema...\n');
+    res.write('Creating tables...\n');
     const schemaPath = path.join(__dirname, '..', '..', '..', 'database', 'schema-postgres.sql');
     const schema = fs.readFileSync(schemaPath, 'utf8');
     await pool.query(schema);
-    res.write('✅ Schema created\n\n');
+    res.write('✅ Tables created\n\n');
 
     // Seed roles
     res.write('Seeding roles...\n');

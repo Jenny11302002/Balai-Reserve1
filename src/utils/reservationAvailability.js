@@ -6,6 +6,14 @@ const RESOURCE_TABLES = {
   venue: 'venues',
 };
 
+const FINAL_RESERVATION_STATUSES = new Set([
+  'completed',
+  'cancelled',
+  'rejected',
+  'no_show',
+  'checked_out',
+]);
+
 function releaseReservationItems(db, reservationId) {
   const items = db.prepare(`
     SELECT item_type, item_id
@@ -36,7 +44,7 @@ function reconcileExpiredReservations(db) {
   const expiredReservations = db.prepare(`
     SELECT id, reservation_type, check_out_date, event_date, start_time, end_time
     FROM reservations
-    WHERE status NOT IN ('completed', 'cancelled', 'rejected', 'no_show')
+    WHERE status NOT IN ('completed', 'cancelled', 'rejected', 'no_show', 'checked_out')
       AND (
         (reservation_type = 'room' AND check_out_date IS NOT NULL AND check_out_date <= ?)
         OR
@@ -53,14 +61,19 @@ function reconcileExpiredReservations(db) {
   `).all(today, today, today, today, currentTime, today);
 
   const completeReservation = db.transaction((reservation) => {
-    const previousStatus = db.prepare(`
+    const row = db.prepare(`
       SELECT status FROM reservations WHERE id = ?
-    `).get(reservation.id).status;
+    `).get(reservation.id);
+    const previousStatus = row ? row.status : null;
+
+    if (!previousStatus || FINAL_RESERVATION_STATUSES.has(previousStatus)) {
+      return;
+    }
 
     db.prepare(`
       UPDATE reservations
       SET status = 'completed', updated_at = datetime('now')
-      WHERE id = ? AND status NOT IN ('completed', 'cancelled', 'rejected', 'no_show')
+      WHERE id = ? AND status NOT IN ('completed', 'cancelled', 'rejected', 'no_show', 'checked_out')
     `).run(reservation.id);
 
     db.prepare(`

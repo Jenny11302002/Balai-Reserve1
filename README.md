@@ -55,8 +55,9 @@ Balai-Reserve is a full-featured, web-based management platform for resorts and 
 
 ### 1. Install dependencies
 
+Run this from the project folder:
+
 ```bash
-cd "balai-reserve"
 npm install
 ```
 
@@ -84,6 +85,8 @@ npm run seed      # inserts demo data
 ```
 
 ### 4. Start the server
+
+Xianfire is the app's template engine; it does not have a separate `npm run xian` command. Start the app from the project folder with:
 
 ```bash
 npm run dev       # with nodemon (auto-restart on file changes)

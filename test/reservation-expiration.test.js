@@ -98,3 +98,25 @@ test('expired checked-in and confirmed reservations release their resources', ()
     fs.rmSync(directory, { recursive: true, force: true });
   }
 });
+
+test('checked-out reservations are not re-marked as completed by the expiry reconciler', () => {
+  const { db, directory } = createTestDatabase();
+  try {
+    const yesterday = new Date();
+    yesterday.setDate(yesterday.getDate() - 1);
+    const date = d => d.toISOString().slice(0, 10);
+
+    db.prepare(`INSERT INTO rooms (id, status) VALUES (1, 'occupied')`).run();
+    db.prepare(`INSERT INTO reservations (booking_ref, reservation_type, check_in_date, check_out_date, status, payment_status) VALUES
+      ('ROOM-CHECKEDOUT', 'room', ?, ?, 'checked_out', 'fully_paid')
+    `).run(date(yesterday), date(yesterday));
+    db.prepare(`INSERT INTO reservation_items (reservation_id, item_type, item_id) VALUES (1, 'room', 1)`).run();
+
+    assert.doesNotThrow(() => reconcileExpiredReservations(db));
+    assert.equal(db.prepare('SELECT status FROM reservations WHERE booking_ref = ?').get('ROOM-CHECKEDOUT').status, 'checked_out');
+    assert.equal(db.prepare('SELECT status FROM rooms WHERE id = 1').get().status, 'occupied');
+  } finally {
+    db.close();
+    fs.rmSync(directory, { recursive: true, force: true });
+  }
+});

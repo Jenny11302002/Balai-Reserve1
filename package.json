@@ -9,7 +9,8 @@
     "migrate": "node src/database/migrate.js",
     "seed": "node src/database/seed.js",
     "setup": "node src/database/migrate.js && node src/database/seed.js",
-    "fresh-start": "node src/database/fresh-start.js"
+    "fresh-start": "node src/database/fresh-start.js",
+    "test": "node --test"
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",

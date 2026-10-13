@@ -13,6 +13,7 @@ const router = express.Router();
 router.get('/', requireAuth, async (req, res) => {
   const role = req.session.user.role;
   try {
+    console.log('[Dashboard] Loading for role:', role);
     switch (role) {
       case 'admin':    return await renderAdmin(req, res);
       case 'staff':    return await renderStaff(req, res);
@@ -20,8 +21,13 @@ router.get('/', requireAuth, async (req, res) => {
       default:         return await renderStaff(req, res);
     }
   } catch (error) {
-    console.error('Dashboard error:', error);
-    res.status(500).send('Dashboard Error: ' + error.message);
+    console.error('[Dashboard] Error:', error);
+    res.status(500).render('errors/500', {
+      title: 'Dashboard Error',
+      layout: 'layouts/main',
+      error: process.env.NODE_ENV === 'production' ? 'An error occurred loading the dashboard.' : error.message,
+      stack: process.env.NODE_ENV === 'production' ? null : error.stack
+    });
   }
 });
 
@@ -29,7 +35,9 @@ router.get('/', requireAuth, async (req, res) => {
 async function renderAdmin(req, res) {
   const today = new Date().toISOString().slice(0, 10);
   
-  // Simple stats - just show zeros for now since tables are empty
+  console.log('[Dashboard] Rendering admin dashboard');
+  
+  // Initialize with zeros
   const stats = {
     totalReservations: 0,
     todayCheckIns: 0,
@@ -54,15 +62,34 @@ async function renderAdmin(req, res) {
   };
 
   try {
-    stats.totalReservations = (await db.prepare(`SELECT COUNT(*) AS c FROM reservations`).get())?.c || 0;
-    stats.totalRooms = (await db.prepare(`SELECT COUNT(*) AS c FROM rooms WHERE is_active=1`).get())?.c || 0;
-    stats.totalVenues = (await db.prepare(`SELECT COUNT(*) AS c FROM venues WHERE is_active=1`).get())?.c || 0;
-    stats.totalCottages = (await db.prepare(`SELECT COUNT(*) AS c FROM cottages WHERE is_active=1`).get())?.c || 0;
-    stats.totalCustomers = (await db.prepare(`SELECT COUNT(*) AS c FROM customers`).get())?.c || 0;
+    console.log('[Dashboard] Fetching totalReservations...');
+    const resCount = await db.prepare(`SELECT COUNT(*) AS c FROM reservations`).get();
+    stats.totalReservations = resCount?.c || 0;
+    
+    console.log('[Dashboard] Fetching totalRooms...');
+    const roomCount = await db.prepare(`SELECT COUNT(*) AS c FROM rooms WHERE is_active=1`).get();
+    stats.totalRooms = roomCount?.c || 0;
+    
+    console.log('[Dashboard] Fetching totalVenues...');
+    const venueCount = await db.prepare(`SELECT COUNT(*) AS c FROM venues WHERE is_active=1`).get();
+    stats.totalVenues = venueCount?.c || 0;
+    
+    console.log('[Dashboard] Fetching totalCottages...');
+    const cottageCount = await db.prepare(`SELECT COUNT(*) AS c FROM cottages WHERE is_active=1`).get();
+    stats.totalCottages = cottageCount?.c || 0;
+    
+    console.log('[Dashboard] Fetching totalCustomers...');
+    const custCount = await db.prepare(`SELECT COUNT(*) AS c FROM customers`).get();
+    stats.totalCustomers = custCount?.c || 0;
+    
+    console.log('[Dashboard] Stats loaded:', stats);
   } catch (error) {
-    console.error('Error fetching stats:', error);
+    console.error('[Dashboard] Error fetching stats:', error);
+    // Continue with zeros
   }
 
+  console.log('[Dashboard] Rendering template...');
+  
   res.render('dashboard/admin', {
     title:  'Admin Dashboard – Balai-Reserve',
     layout: 'layouts/main',

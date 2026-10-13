@@ -9,9 +9,9 @@ const db = require('../config/database');
 /**
  * Create a notification for a staff user.
  */
-function notifyStaff(userId, type, title, message, link = null) {
+async function notifyStaff(userId, type, title, message, link = null) {
   try {
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO notifications (user_id, type, title, message, link)
       VALUES (?, ?, ?, ?, ?)
     `).run(userId, type, title, message, link);
@@ -21,9 +21,9 @@ function notifyStaff(userId, type, title, message, link = null) {
 /**
  * Create a notification for a customer.
  */
-function notifyCustomer(customerId, type, title, message, link = null) {
+async function notifyCustomer(customerId, type, title, message, link = null) {
   try {
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO notifications (customer_id, type, title, message, link)
       VALUES (?, ?, ?, ?, ?)
     `).run(customerId, type, title, message, link);
@@ -35,10 +35,10 @@ function notifyCustomer(customerId, type, title, message, link = null) {
  * Works for both staff and customers (customers have a linked users row).
  * This is the notification that shows up in the recipient's bell.
  */
-function notifyUser(userId, type, title, message, link = null) {
+async function notifyUser(userId, type, title, message, link = null) {
   if (!userId) return;
   try {
-    db.prepare(`
+    await db.prepare(`
       INSERT INTO notifications (user_id, type, title, message, link)
       VALUES (?, ?, ?, ?, ?)
     `).run(userId, type, title, message, link);
@@ -49,16 +49,16 @@ function notifyUser(userId, type, title, message, link = null) {
  * Notify the customer that owns a reservation (resolves customer → user_id).
  * Safe no-op if the customer has no linked user account.
  */
-function notifyReservationCustomer(reservationId, type, title, message, link = null) {
+async function notifyReservationCustomer(reservationId, type, title, message, link = null) {
   try {
-    const row = db.prepare(`
+    const row = await db.prepare(`
       SELECT c.user_id AS user_id
       FROM reservations r
       JOIN customers c ON c.id = r.customer_id
       WHERE r.id = ?
     `).get(reservationId);
     if (row && row.user_id) {
-      notifyUser(row.user_id, type, title, message, link);
+      await notifyUser(row.user_id, type, title, message, link);
     }
   } catch { /* non-critical */ }
 }
@@ -66,27 +66,29 @@ function notifyReservationCustomer(reservationId, type, title, message, link = n
 /**
  * Notify all admins.
  */
-function notifyAllAdmins(type, title, message, link = null) {
+async function notifyAllAdmins(type, title, message, link = null) {
   try {
-    const admins = db.prepare(`
+    const admins = (await db.prepare(`
       SELECT u.id FROM users u
       JOIN roles r ON r.id = u.role_id
       WHERE r.name = 'admin' AND u.is_active = 1
-    `).all();
-    const stmt = db.prepare(`
-      INSERT INTO notifications (user_id, type, title, message, link)
-      VALUES (?, ?, ?, ?, ?)
-    `);
-    for (const a of admins) stmt.run(a.id, type, title, message, link);
+    `).all()) || [];
+    
+    for (const a of admins) {
+      await db.prepare(`
+        INSERT INTO notifications (user_id, type, title, message, link)
+        VALUES (?, ?, ?, ?, ?)
+      `).run(a.id, type, title, message, link);
+    }
   } catch { /* non-critical */ }
 }
 
 /**
  * Get unread notification count for a user.
  */
-function getUnreadCount(userId) {
+async function getUnreadCount(userId) {
   try {
-    const row = db.prepare(`
+    const row = await db.prepare(`
       SELECT COUNT(*) AS cnt FROM notifications WHERE user_id = ? AND is_read = 0
     `).get(userId);
     return row?.cnt || 0;
@@ -96,14 +98,14 @@ function getUnreadCount(userId) {
 /**
  * Get recent notifications for a user.
  */
-function getRecentNotifications(userId, limit = 10) {
+async function getRecentNotifications(userId, limit = 10) {
   try {
-    return db.prepare(`
+    return (await db.prepare(`
       SELECT * FROM notifications
       WHERE user_id = ?
       ORDER BY created_at DESC
       LIMIT ?
-    `).all(userId, limit);
+    `).all(userId, limit)) || [];
   } catch { return []; }
 }
 

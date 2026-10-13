@@ -54,9 +54,9 @@ function guestOnly(req, res, next) {
  */
 function attachAudit(db) {
   return (req, res, next) => {
-    req.audit = function (action, module_, recordId, oldVals, newVals) {
+    req.audit = async function (action, module_, recordId, oldVals, newVals) {
       try {
-        db.prepare(`
+        await db.prepare(`
           INSERT INTO audit_logs (user_id, action, module, record_id, old_values, new_values, ip_address, user_agent)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?)
         `).run(

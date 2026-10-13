@@ -15,13 +15,29 @@ const fs = require('fs');
 const path = require('path');
 
 router.get('/initialize-database-now', async (req, res) => {
+  let pool;
+  
   try {
-    const pool = new Pool({
+    res.setHeader('Content-Type', 'text/html; charset=utf-8');
+    res.write('<html><body style="font-family: monospace; padding: 20px;"><h1>Database Setup</h1><pre>');
+    res.write('Starting database initialization...\n\n');
+    
+    // Check environment
+    if (!process.env.DATABASE_URL) {
+      throw new Error('DATABASE_URL environment variable not found!');
+    }
+    res.write('✅ DATABASE_URL found\n\n');
+    
+    // Connect to database
+    res.write('Connecting to database...\n');
+    pool = new Pool({
       connectionString: process.env.DATABASE_URL,
       ssl: { rejectUnauthorized: false }
     });
-
-    res.write('<html><body><h1>Database Setup</h1><pre>');
+    
+    // Test connection
+    await pool.query('SELECT NOW()');
+    res.write('✅ Connected to database\n\n');
     
     // Drop existing tables first to start fresh
     res.write('Dropping existing tables (if any)...\n');
@@ -64,9 +80,15 @@ router.get('/initialize-database-now', async (req, res) => {
     res.write('✅ Dropped old tables\n\n');
     
     // Create schema
-    res.write('Creating tables...\n');
+    res.write('Reading schema file...\n');
     const schemaPath = path.join(__dirname, '..', '..', '..', 'database', 'schema-postgres.sql');
+    if (!fs.existsSync(schemaPath)) {
+      throw new Error(`Schema file not found at: ${schemaPath}`);
+    }
     const schema = fs.readFileSync(schemaPath, 'utf8');
+    res.write(`✅ Schema file loaded (${schema.length} bytes)\n\n`);
+    
+    res.write('Creating tables...\n');
     await pool.query(schema);
     res.write('✅ Tables created\n\n');
 
@@ -106,8 +128,6 @@ router.get('/initialize-database-now', async (req, res) => {
     `);
     res.write('✅ Settings created\n\n');
 
-    await pool.end();
-
     res.write('\n✅ DATABASE SETUP COMPLETE!\n\n');
     res.write('Admin Login:\n');
     res.write('  Email: admin@balaireserve.com\n');
@@ -117,10 +137,24 @@ router.get('/initialize-database-now', async (req, res) => {
     res.end();
 
   } catch (error) {
-    res.write(`\n\n❌ ERROR: ${error.message}\n`);
-    res.write(`\nStack: ${error.stack}\n`);
-    res.write('</pre></body></html>');
-    res.end();
+    console.error('Setup error:', error);
+    
+    try {
+      res.write(`\n\n❌ ERROR: ${error.message}\n\n`);
+      res.write(`Stack: ${error.stack}\n`);
+      res.write('</pre></body></html>');
+      res.end();
+    } catch (writeError) {
+      console.error('Failed to write error to response:', writeError);
+    }
+  } finally {
+    if (pool) {
+      try {
+        await pool.end();
+      } catch (err) {
+        console.error('Error closing pool:', err);
+      }
+    }
   }
 });
 

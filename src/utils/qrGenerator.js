@@ -10,6 +10,7 @@ const path   = require('path');
 const fs     = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const db     = require('../config/database');
+const { ensureDir } = require('./ensureDir');
 
 const QR_DIR = process.env.QR_PATH || './public/qrcodes';
 
@@ -20,9 +21,7 @@ const QR_DIR = process.env.QR_PATH || './public/qrcodes';
  * @returns {object} { token, qrPath }
  */
 async function generateReservationQR(reservationId, bookingRef) {
-  if (!fs.existsSync(QR_DIR)) {
-    fs.mkdirSync(QR_DIR, { recursive: true });
-  }
+  ensureDir(QR_DIR);
 
   const token    = uuidv4();
   const filename = `qr-${bookingRef}-${token.slice(0, 8)}.png`;

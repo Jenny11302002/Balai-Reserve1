@@ -10,13 +10,14 @@ const fs      = require('fs');
 const multer  = require('multer');
 const db      = require('../../../config/database');
 const { requireAuth, requireRole } = require('../../../middleware/auth');
+const { ensureDir } = require('../../../utils/ensureDir');
 
 const router     = express.Router();
 const ADMIN_ONLY = requireRole('admin');
 
 // ── Multer: QR code image upload ────────────────────────────────────────────
 const QR_UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'settings');
-if (!fs.existsSync(QR_UPLOAD_DIR)) fs.mkdirSync(QR_UPLOAD_DIR, { recursive: true });
+ensureDir(QR_UPLOAD_DIR);
 
 const qrStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, QR_UPLOAD_DIR),

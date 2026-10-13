@@ -17,12 +17,13 @@ const { body, validationResult } = require('express-validator');
 const db      = require('../../../config/database');
 const { requireAuth, requireRole } = require('../../../middleware/auth');
 const { notifyAllAdmins, notifyReservationCustomer } = require('../../../utils/notifications');
+const { ensureDir } = require('../../../utils/ensureDir');
 
 const router = express.Router();
 
 // ── Multer: refund payout proof screenshots ─────────────────────────────────
 const REFUND_PROOF_DIR = path.join(process.cwd(), 'uploads', 'refund_proofs');
-if (!fs.existsSync(REFUND_PROOF_DIR)) fs.mkdirSync(REFUND_PROOF_DIR, { recursive: true });
+ensureDir(REFUND_PROOF_DIR);
 
 const refundProofStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, REFUND_PROOF_DIR),

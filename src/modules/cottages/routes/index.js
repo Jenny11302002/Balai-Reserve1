@@ -11,13 +11,14 @@ const multer  = require('multer');
 const { body, validationResult } = require('express-validator');
 const db      = require('../../../config/database');
 const { requireAuth, requireRole } = require('../../../middleware/auth');
+const { ensureDir } = require('../../../utils/ensureDir');
 
 const router     = express.Router();
 const CAN_MANAGE = ['admin', 'staff'];
 
 // ── Multer config: store in uploads/cottages/ ──────────────────────────────
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'cottages');
-if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
+ensureDir(UPLOAD_DIR);
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),

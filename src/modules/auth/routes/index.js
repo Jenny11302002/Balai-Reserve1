@@ -114,16 +114,15 @@ router.post('/login',
 
     const { email, password } = req.body;
     
-    // Simple query for Firestore - get user by email
-    let user;
     try {
-      const usersSnapshot = await db.getFirestore().collection('users')
-        .where('email', '==', email)
-        .where('is_active', '==', 1)
-        .limit(1)
-        .get();
-      
-      if (usersSnapshot.empty) {
+      // Use Postgres SQL query
+      const user = await db.prepare(`
+        SELECT u.*, r.name AS role, r.label AS role_label
+        FROM users u JOIN roles r ON r.id = u.role_id
+        WHERE u.email = $1 AND u.is_active = 1
+      `).get(email);
+
+      if (!user || !user.password_hash || !bcrypt.compareSync(password, user.password_hash)) {
         return res.render('auth/login', {
           title: 'Sign In – Balai-Reserve', layout: 'layouts/auth', loadFirebase: true,
           firebaseConfig: FIREBASE_CLIENT_CONFIG,
@@ -131,18 +130,23 @@ router.post('/login',
           old: { email },
         });
       }
-      
-      user = { id: usersSnapshot.docs[0].id, ...usersSnapshot.docs[0].data() };
-      
-      // Get role info
-      const roleDoc = await db.getFirestore().collection('roles').doc(String(user.role_id)).get();
-      if (roleDoc.exists) {
-        user.role = roleDoc.data().name;
-        user.role_label = roleDoc.data().label;
-      } else {
-        user.role = 'customer';
-        user.role_label = 'Customer';
+
+      // Block Google-only accounts from using password login
+      if (user.auth_provider === 'google') {
+        return res.render('auth/login', {
+          title: 'Sign In – Balai-Reserve', layout: 'layouts/auth', loadFirebase: true,
+          firebaseConfig: FIREBASE_CLIENT_CONFIG,
+          errors: [{ msg: 'This account uses Google Sign-In. Please click "Continue with Google" instead.' }],
+          old: { email },
+        });
       }
+
+      // Update last login
+      await db.prepare(`UPDATE users SET last_login = NOW() WHERE id = $1`).run(user.id);
+      
+      req.session.user = buildSessionUser(user);
+      return postLoginRedirect(req, res, user.role);
+      
     } catch (error) {
       console.error('Login error:', error);
       return res.render('auth/login', {
@@ -152,37 +156,6 @@ router.post('/login',
         old: { email },
       });
     }
-
-    if (!user || !user.password_hash || !bcrypt.compareSync(password, user.password_hash)) {
-      return res.render('auth/login', {
-        title: 'Sign In – Balai-Reserve', layout: 'layouts/auth', loadFirebase: true,
-        firebaseConfig: FIREBASE_CLIENT_CONFIG,
-        errors: [{ msg: 'Invalid email or password. Please try again.' }],
-        old: { email },
-      });
-    }
-
-    // Block Google-only accounts from using password login
-    if (user.auth_provider === 'google') {
-      return res.render('auth/login', {
-        title: 'Sign In – Balai-Reserve', layout: 'layouts/auth', loadFirebase: true,
-        firebaseConfig: FIREBASE_CLIENT_CONFIG,
-        errors: [{ msg: 'This account uses Google Sign-In. Please click "Continue with Google" instead.' }],
-        old: { email },
-      });
-    }
-
-    // Update last login
-    try {
-      await db.getFirestore().collection('users').doc(String(user.id)).update({
-        last_login: new Date().toISOString()
-      });
-    } catch (error) {
-      console.error('Error updating last_login:', error);
-    }
-    
-    req.session.user = buildSessionUser(user);
-    return postLoginRedirect(req, res, user.role);
   }
 );
 

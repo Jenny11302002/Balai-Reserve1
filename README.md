@@ -269,3 +269,5 @@ The project is structured for incremental development:
 ## License
 
 MIT — Built for Balai Miciano Resort Management System
+#   D e p l o y m e n t   t r i g g e r  
+ 

@@ -56,6 +56,7 @@ const notificationRoutes = require('./src/modules/notifications/routes');
 const usersRoutes        = require('./src/modules/users/routes');
 const profileRoutes      = require('./src/modules/profile/routes');
 const settingsRoutes     = require('./src/modules/settings/routes');
+const setupRoutes        = require('./src/modules/setup/routes');  // ONE-TIME SETUP
 
 // ─────────────────────────────────────────────────────────────────────────
 const app  = express();
@@ -301,6 +302,7 @@ app.use('/notifications', notificationRoutes);
 app.use('/users',         usersRoutes);
 app.use('/profile',       profileRoutes);
 app.use('/settings',      settingsRoutes);
+app.use('/setup',         setupRoutes);    // ONE-TIME SETUP - DELETE AFTER USE
 
 // ── QR Check-in (public — no auth required) ───────────────────────────────
 const { validateQRToken, consumeQRToken } = require('./src/utils/qrGenerator');

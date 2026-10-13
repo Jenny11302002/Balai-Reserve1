@@ -188,8 +188,8 @@ app.use(async (req, res, next) => {
 
   if (user) {
     try {
-      res.locals.unreadNotifCount      = getUnreadCount(user.id);
-      res.locals.recentNotifications   = getRecentNotifications(user.id, 6);
+      res.locals.unreadNotifCount      = await getUnreadCount(user.id);
+      res.locals.recentNotifications   = await getRecentNotifications(user.id, 6);
     } catch (err) {
       // Notification queries may fail if tables don't exist yet
       console.error('Notification query error:', err.message);

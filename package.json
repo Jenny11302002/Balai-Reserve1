@@ -16,9 +16,6 @@
   },
   "dependencies": {
     "bcryptjs": "^2.4.3",
-    "better-sqlite3": "^11.6.0",
-    "better-sqlite3-session-store": "^0.1.0",
-    "connect-sqlite3": "^0.9.13",
     "cookie-parser": "^1.4.6",
     "csrf-csrf": "^3.0.6",
     "dayjs": "^1.11.10",

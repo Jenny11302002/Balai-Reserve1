@@ -13,7 +13,7 @@ const { notifyAllAdmins } = require('../../../utils/notifications');
 const router = express.Router();
 
 // GET /inquiries
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { search='', status='', category='', page=1 } = req.query;
   const limit  = 20;
   const offset = (parseInt(page)-1)*limit;
@@ -51,7 +51,7 @@ router.get('/', requireAuth, (req, res) => {
 });
 
 // GET /inquiries/:id
-router.get('/:id', requireAuth, (req, res) => {
+router.get('/:id', requireAuth, async (req, res) => {
   const inquiry = await db.prepare(`
     SELECT i.*, u.first_name || ' ' || u.last_name AS assigned_name,
            c.first_name || ' ' || c.last_name AS customer_full_name
@@ -69,24 +69,24 @@ router.get('/:id', requireAuth, (req, res) => {
 });
 
 // POST /inquiries/:id/assign
-router.post('/:id/assign', requireAuth, requireRole('admin','staff'), (req, res) => {
+router.post('/:id/assign', requireAuth, requireRole('admin','staff'), async (req, res) => {
   const { assigned_to } = req.body;
-  await db.prepare(`UPDATE inquiries SET assigned_to=?, status='in_progress', updated_at=NOW() WHERE id=?`).run(assigned_to, req.params.id);
+  await db.prepare(`UPDATE inquiries SET assigned_to=?, status='in_progress', updated_at=datetime('now') WHERE id=?`).run(assigned_to, req.params.id);
   req.session.flash = { success: 'Inquiry assigned.' };
   res.redirect(`/inquiries/${req.params.id}`);
 });
 
 // POST /inquiries/:id/resolve
-router.post('/:id/resolve', requireAuth, requireRole('admin','staff'), (req, res) => {
+router.post('/:id/resolve', requireAuth, requireRole('admin','staff'), async (req, res) => {
   const { resolution } = req.body;
   // Auto-assign to the staff member who resolves — no manual selection needed
-  await db.prepare(`UPDATE inquiries SET status='resolved', resolution=?, assigned_to=?, resolved_at=NOW(), updated_at=NOW() WHERE id=?`).run(resolution || '', req.session.user.id, req.params.id);
+  await db.prepare(`UPDATE inquiries SET status='resolved', resolution=?, assigned_to=?, resolved_at=datetime('now'), updated_at=datetime('now') WHERE id=?`).run(resolution || '', req.session.user.id, req.params.id);
   req.session.flash = { success: 'Inquiry marked as resolved.' };
   res.redirect(`/inquiries/${req.params.id}`);
 });
 
 // POST /inquiries/:id/escalate – escalate to ticket
-router.post('/:id/escalate', requireAuth, requireRole('admin','staff'), (req, res) => {
+router.post('/:id/escalate', requireAuth, requireRole('admin','staff'), async (req, res) => {
   const inquiry = await db.prepare(`SELECT * FROM inquiries WHERE id=?`).get(req.params.id);
   if (!inquiry) return res.redirect('/inquiries');
 
@@ -96,12 +96,12 @@ router.post('/:id/escalate', requireAuth, requireRole('admin','staff'), (req, re
     VALUES (?, ?, ?, ?, ?, ?, 'normal', 'open', ?)
   `).run(ticketNum, inquiry.customer_id, inquiry.id, inquiry.subject, inquiry.message, inquiry.category || 'general', req.session.user.id);
 
-  await db.prepare(`UPDATE inquiries SET status='escalated', updated_at=NOW() WHERE id=?`).run(inquiry.id);
+  await db.prepare(`UPDATE inquiries SET status='escalated', updated_at=datetime('now') WHERE id=?`).run(inquiry.id);
   req.session.flash = { success: `Escalated to support ticket ${ticketNum}.` };
   res.redirect(`/inquiries/${inquiry.id}`);
 });
 
-// ── Public / Bot inquiry submission ────────────────────────────
+// ΓöÇΓöÇ Public / Bot inquiry submission ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // POST /inquiries/submit  (from booking assistant / public form)
 router.post('/submit',
   [
@@ -109,7 +109,7 @@ router.post('/submit',
     body('message').trim().notEmpty().withMessage('Message is required.'),
     body('name').trim().notEmpty().withMessage('Your name is required.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.status(400).json({ success: false, errors: errors.array() });
@@ -136,7 +136,7 @@ router.post('/submit',
   }
 );
 
-// ── Chatbot / Automated Assistant ─────────────────────────────
+// ΓöÇΓöÇ Chatbot / Automated Assistant ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // POST /inquiries/chat
 router.post('/chat', async (req, res) => {
   const { message } = req.body;
@@ -150,7 +150,7 @@ router.post('/chat', async (req, res) => {
  * Simple keyword-based automated response engine.
  * Uses real DB data wherever possible.
  */
-function autoAnswer(message) {
+async function autoAnswer(message) {
   const msg = message.toLowerCase();
 
   // Room availability

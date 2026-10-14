@@ -11,14 +11,13 @@ const multer  = require('multer');
 const { body, validationResult } = require('express-validator');
 const db      = require('../../../config/database');
 const { requireAuth, requireRole } = require('../../../middleware/auth');
-const { ensureDir } = require('../../../utils/ensureDir');
 
 const router     = express.Router();
 const CAN_MANAGE = ['admin', 'staff'];
 
-// ── Multer config: store in uploads/cottages/ ──────────────────────────────
+// ΓöÇΓöÇ Multer config: store in uploads/cottages/ ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'cottages');
-ensureDir(UPLOAD_DIR);
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, UPLOAD_DIR),
@@ -43,12 +42,12 @@ const upload = multer({
 });
 
 // Helper: parse stored images JSON safely
-function parseImages(raw) {
+async function parseImages(raw) {
   try { return JSON.parse(raw || '[]'); } catch { return []; }
 }
 
 // GET /cottages
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { search = '', status = '', page = 1 } = req.query;
   const limit  = 12;
   const offset = (parseInt(page) - 1) * limit;
@@ -79,7 +78,7 @@ router.get('/', requireAuth, (req, res) => {
 });
 
 // GET /cottages/new
-router.get('/new', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.get('/new', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   res.render('cottages/form', {
     title: 'Add Cottage', layout: 'layouts/main',
     cottage: null, errors: [], old: {},
@@ -90,7 +89,7 @@ router.get('/new', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
 router.post('/',
   requireAuth, requireRole(...CAN_MANAGE),
   upload.array('images', 5),
-  (req, res, next) => {
+  async (req, res, next) => {
     // multer errors (file type / size)
     if (req.fileValidationError) {
       return res.render('cottages/form', { title: 'Add Cottage', layout: 'layouts/main', cottage: null, errors: [{ msg: req.fileValidationError }], old: req.body });
@@ -102,7 +101,7 @@ router.post('/',
     body('capacity').isInt({ min: 1 }).withMessage('Capacity must be at least 1.'),
     body('price').isFloat({ min: 0 }).withMessage('Enter a valid price.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       // Clean up any uploaded files on validation failure
@@ -131,7 +130,7 @@ router.post('/',
 );
 
 // GET /cottages/:id
-router.get('/:id', requireAuth, (req, res) => {
+router.get('/:id', requireAuth, async (req, res) => {
   const cottage = await db.prepare(`SELECT * FROM cottages WHERE id = ?`).get(req.params.id);
   if (!cottage) { req.session.flash = { error: 'Cottage not found.' }; return res.redirect('/cottages'); }
 
@@ -166,7 +165,7 @@ router.get('/:id', requireAuth, (req, res) => {
 });
 
 // GET /cottages/:id/edit
-router.get('/:id/edit', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.get('/:id/edit', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   const cottage = await db.prepare(`SELECT * FROM cottages WHERE id = ?`).get(req.params.id);
   if (!cottage) { req.session.flash = { error: 'Cottage not found.' }; return res.redirect('/cottages'); }
   try { cottage.amenitiesStr = JSON.parse(cottage.amenities || '[]').join(', '); } catch { cottage.amenitiesStr = ''; }
@@ -181,13 +180,13 @@ router.get('/:id/edit', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
 router.post('/:id/edit',
   requireAuth, requireRole(...CAN_MANAGE),
   upload.array('images', 5),
-  (req, res, next) => { next(); },
+  async (req, res, next) => { next(); },
   [
     body('name').trim().notEmpty().withMessage('Cottage name is required.'),
     body('capacity').isInt({ min: 1 }).withMessage('Capacity must be at least 1.'),
     body('price').isFloat({ min: 0 }).withMessage('Enter a valid price.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const old    = await db.prepare(`SELECT * FROM cottages WHERE id = ?`).get(req.params.id);
     const errors = validationResult(req);
 
@@ -226,7 +225,7 @@ router.post('/:id/edit',
     const imagesJson = JSON.stringify(allImages);
 
     await db.prepare(`
-      UPDATE cottages SET name=?, description=?, capacity=?, price=?, amenities=?, images=?, status=?, updated_at=NOW()
+      UPDATE cottages SET name=?, description=?, capacity=?, price=?, amenities=?, images=?, status=?, updated_at=datetime('now')
       WHERE id=?
     `).run(name, description || '', capacity, price, amenitiesJson, imagesJson, status || 'available', req.params.id);
 
@@ -237,10 +236,10 @@ router.post('/:id/edit',
 );
 
 // POST /cottages/:id/status — quick status toggle
-router.post('/:id/status', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.post('/:id/status', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   const { status } = req.body;
   const old = await db.prepare(`SELECT status FROM cottages WHERE id=?`).get(req.params.id);
-  await db.prepare(`UPDATE cottages SET status=?, updated_at=NOW() WHERE id=?`).run(status, req.params.id);
+  await db.prepare(`UPDATE cottages SET status=?, updated_at=datetime('now') WHERE id=?`).run(status, req.params.id);
   req.audit('status_change', 'cottages', req.params.id, old, { status });
   req.session.flash = { success: 'Cottage status updated.' };
   res.redirect(req.get('Referer') || '/cottages');

@@ -10,7 +10,7 @@ const { requireAuth, requireRole } = require('../../../middleware/auth');
 const router = express.Router();
 
 // GET /guests
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { search = '', status = '', page = 1 } = req.query;
   const limit  = 20;
   const offset = (parseInt(page) - 1) * limit;
@@ -44,7 +44,7 @@ router.get('/', requireAuth, (req, res) => {
 });
 
 // GET /guests/:id
-router.get('/:id', requireAuth, (req, res) => {
+router.get('/:id', requireAuth, async (req, res) => {
   const guest = await db.prepare(`
     SELECT g.*, r.booking_ref, r.check_in_date, r.check_out_date, r.total_amount,
            r.payment_status, r.status AS res_status
@@ -71,11 +71,11 @@ router.get('/:id', requireAuth, (req, res) => {
 });
 
 // POST /guests/:id/checkout
-router.post('/:id/checkout', requireAuth, requireRole('admin','staff'), (req, res) => {
+router.post('/:id/checkout', requireAuth, requireRole('admin','staff'), async (req, res) => {
   const guest = await db.prepare(`SELECT * FROM guests WHERE id=?`).get(req.params.id);
   if (!guest) return res.redirect('/guests');
 
-  // ── Fix 5: Block checkout if balance is still outstanding ─────────────────
+  // ΓöÇΓöÇ Fix 5: Block checkout if balance is still outstanding ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const reservation = await db.prepare(`SELECT * FROM reservations WHERE id=?`).get(guest.reservation_id);
   if (reservation) {
     const totalPaid = await db.prepare(
@@ -89,17 +89,17 @@ router.post('/:id/checkout', requireAuth, requireRole('admin','staff'), (req, re
   }
 
   db.transaction(() => {
-    await db.prepare(`UPDATE guests SET status='checked_out', updated_at=NOW() WHERE id=?`).run(guest.id);
-    // ── Fix 5: Set status=completed AND payment_status=fully_paid on checkout
-    await db.prepare(`UPDATE reservations SET status='completed', payment_status='fully_paid', updated_at=NOW() WHERE id=?`).run(guest.reservation_id);
-    await db.prepare(`INSERT INTO check_outs (reservation_id, guest_id, checked_out_by) VALUES (?,?,?)`).run(guest.reservation_id, guest.id, req.session.user.id);
+    db.prepare(`UPDATE guests SET status='checked_out', updated_at=datetime('now') WHERE id=?`).run(guest.id);
+    // ΓöÇΓöÇ Fix 5: Set status=completed AND payment_status=fully_paid on checkout
+    db.prepare(`UPDATE reservations SET status='completed', payment_status='fully_paid', updated_at=datetime('now') WHERE id=?`).run(guest.reservation_id);
+    db.prepare(`INSERT INTO check_outs (reservation_id, guest_id, checked_out_by) VALUES (?,?,?)`).run(guest.reservation_id, guest.id, req.session.user.id);
     // Free up the room
     // Free the resource back to available right after checkout completes.
-    const items = await db.prepare(`SELECT * FROM reservation_items WHERE reservation_id=?`).all(guest.reservation_id);
+    const items = db.prepare(`SELECT * FROM reservation_items WHERE reservation_id=?`).all(guest.reservation_id);
     for (const item of items) {
-      if (item.item_type === 'room')    await db.prepare(`UPDATE rooms SET status='available' WHERE id=?`).run(item.item_id);
-      if (item.item_type === 'venue')   await db.prepare(`UPDATE venues SET status='available' WHERE id=?`).run(item.item_id);
-      if (item.item_type === 'cottage') await db.prepare(`UPDATE cottages SET status='available' WHERE id=?`).run(item.item_id);
+      if (item.item_type === 'room')    db.prepare(`UPDATE rooms SET status='available' WHERE id=?`).run(item.item_id);
+      if (item.item_type === 'venue')   db.prepare(`UPDATE venues SET status='available' WHERE id=?`).run(item.item_id);
+      if (item.item_type === 'cottage') db.prepare(`UPDATE cottages SET status='available' WHERE id=?`).run(item.item_id);
     }
   })();
 

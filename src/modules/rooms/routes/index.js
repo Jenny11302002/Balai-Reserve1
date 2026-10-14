@@ -11,23 +11,22 @@ const multer  = require('multer');
 const { body, validationResult } = require('express-validator');
 const db      = require('../../../config/database');
 const { requireAuth, requireRole } = require('../../../middleware/auth');
-const { ensureDir } = require('../../../utils/ensureDir');
 
 const router     = express.Router();
 const CAN_MANAGE = ['admin', 'staff'];
 
 // Only room types that have at least one active room
 function getActiveRoomTypes() {
-  return await db.prepare(
+  return db.prepare(
     `SELECT rt.* FROM room_types rt
      WHERE EXISTS (SELECT 1 FROM rooms r WHERE r.room_type_id = rt.id AND r.is_active = 1)
      ORDER BY rt.name`
   ).all();
 }
 
-// ── Multer — upload up to 5 images per room into uploads/rooms/ ────────────
+// ΓöÇΓöÇ Multer — upload up to 5 images per room into uploads/rooms/ ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'rooms');
-ensureDir(UPLOAD_DIR);
+if (!fs.existsSync(UPLOAD_DIR)) fs.mkdirSync(UPLOAD_DIR, { recursive: true });
 
 const storage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, UPLOAD_DIR),
@@ -52,7 +51,7 @@ function parseImages(raw) {
 }
 
 // GET /rooms
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { search = '', status = '', type = '', page = 1 } = req.query;
   const limit  = 12;
   const offset = (parseInt(page) - 1) * limit;
@@ -84,7 +83,7 @@ router.get('/', requireAuth, (req, res) => {
 });
 
 // GET /rooms/new
-router.get('/new', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.get('/new', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   const roomTypes = getActiveRoomTypes();
   res.render('rooms/form', {
     title: 'Add New Room', layout: 'layouts/main',
@@ -96,7 +95,7 @@ router.get('/new', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
 router.post('/',
   requireAuth, requireRole(...CAN_MANAGE),
   upload.array('images', 5),
-  (req, res, next) => next(), // multer errors handled by express error handler
+  async (req, res, next) => next(), // multer errors handled by express error handler
   [
     body('room_number').trim().notEmpty().withMessage('Room number is required.'),
     body('name').trim().notEmpty().withMessage('Room name is required.'),
@@ -104,7 +103,7 @@ router.post('/',
     body('capacity').isInt({ min: 1 }).withMessage('Capacity must be at least 1.'),
     body('price').isFloat({ min: 0 }).withMessage('Enter a valid price.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const errors    = validationResult(req);
     const roomTypes = getActiveRoomTypes();
     if (!errors.isEmpty()) {
@@ -129,7 +128,7 @@ router.post('/',
 );
 
 // GET /rooms/:id
-router.get('/:id', requireAuth, (req, res) => {
+router.get('/:id', requireAuth, async (req, res) => {
   const room = await db.prepare(`
     SELECT r.*, rt.name AS type_name
     FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id
@@ -156,7 +155,7 @@ router.get('/:id', requireAuth, (req, res) => {
 });
 
 // GET /rooms/:id/edit
-router.get('/:id/edit', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.get('/:id/edit', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   const room      = await db.prepare(`SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.id=?`).get(req.params.id);
   if (!room) { req.session.flash = { error: 'Room not found.' }; return res.redirect('/rooms'); }
   const roomTypes = getActiveRoomTypes();
@@ -172,13 +171,13 @@ router.get('/:id/edit', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
 router.post('/:id/edit',
   requireAuth, requireRole(...CAN_MANAGE),
   upload.array('images', 5),
-  (req, res, next) => next(),
+  async (req, res, next) => next(),
   [
     body('name').trim().notEmpty().withMessage('Room name is required.'),
     body('capacity').isInt({ min: 1 }).withMessage('Capacity must be at least 1.'),
     body('price').isFloat({ min: 0 }).withMessage('Enter a valid price.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const old       = await db.prepare(`SELECT * FROM rooms WHERE id=?`).get(req.params.id);
     const roomTypes = getActiveRoomTypes();
     const errors    = validationResult(req);
@@ -210,7 +209,7 @@ router.post('/:id/edit',
     const imagesJson = JSON.stringify([...keepImages, ...newImages]);
 
     await db.prepare(`
-      UPDATE rooms SET name=?,description=?,room_type_id=?,capacity=?,price=?,amenities=?,images=?,floor=?,status=?,updated_at=NOW()
+      UPDATE rooms SET name=?,description=?,room_type_id=?,capacity=?,price=?,amenities=?,images=?,floor=?,status=?,updated_at=datetime('now')
       WHERE id=?
     `).run(name, description || '', room_type_id, capacity, price, amenitiesJson, imagesJson, floor || '', status, req.params.id);
 
@@ -221,10 +220,10 @@ router.post('/:id/edit',
 );
 
 // POST /rooms/:id/status
-router.post('/:id/status', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.post('/:id/status', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   const { status } = req.body;
   const old = await db.prepare(`SELECT status FROM rooms WHERE id=?`).get(req.params.id);
-  await db.prepare(`UPDATE rooms SET status=?,updated_at=NOW() WHERE id=?`).run(status, req.params.id);
+  await db.prepare(`UPDATE rooms SET status=?,updated_at=datetime('now') WHERE id=?`).run(status, req.params.id);
   req.audit('status_change', 'rooms', req.params.id, old, { status });
   req.session.flash = { success: 'Room status updated.' };
   res.redirect(req.get('Referer') || '/rooms');

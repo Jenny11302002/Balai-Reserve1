@@ -1,5 +1,11 @@
 /**
- * Dashboard Routes - Postgres Compatible
+ * Dashboard Routes
+ *
+ * Dispatches to a role-specific handler.
+ *
+ *  admin    ΓåÆ full business overview: revenue, occupancy, AI insights
+ *  staff    ΓåÆ operational dashboard: bookings, check-ins, payments, inquiries
+ *  customer ΓåÆ redirected to /portal (their self-service area)
  */
 'use strict';
 
@@ -9,131 +15,147 @@ const { requireAuth } = require('../../../middleware/auth');
 
 const router = express.Router();
 
-// ── Entry point ────────────────────────────────────────────────────────────
+// ΓöÇΓöÇ Entry point ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 router.get('/', requireAuth, async (req, res) => {
   const role = req.session.user.role;
-  try {
-    console.log('[Dashboard] Loading for role:', role);
-    switch (role) {
-      case 'admin':    return await renderAdmin(req, res);
-      case 'staff':    return await renderStaff(req, res);
-      case 'customer': return res.redirect('/portal');
-      default:         return await renderStaff(req, res);
-    }
-  } catch (error) {
-    console.error('[Dashboard] Error:', error);
-    res.status(500).render('errors/500', {
-      title: 'Dashboard Error',
-      layout: 'layouts/main',
-      error: process.env.NODE_ENV === 'production' ? 'An error occurred loading the dashboard.' : error.message,
-      stack: process.env.NODE_ENV === 'production' ? null : error.stack
-    });
+  switch (role) {
+    case 'admin':    return renderAdmin(req, res);
+    case 'staff':    return renderStaff(req, res);
+    case 'customer': return res.redirect('/portal');
+    default:         return renderStaff(req, res);   // fallback for any staff-like role
   }
 });
 
-// ── Admin Dashboard ─────────────────────────────────────────────────────────
+// ΓöÇΓöÇ Admin Dashboard ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 async function renderAdmin(req, res) {
-  const today = new Date().toISOString().slice(0, 10);
-  
-  console.log('[Dashboard] Rendering admin dashboard');
-  
-  // Initialize with zeros
-  const stats = {
-    totalReservations: 0,
-    todayCheckIns: 0,
-    pendingRes: 0,
-    pendingPayments: 0,
-    availableRooms: 0,
-    occupiedRooms: 0,
-    totalRooms: 0,
-    availableVenues: 0,
-    totalVenues: 0,
-    occupiedVenues: 0,
-    availableCottages: 0,
-    totalCottages: 0,
-    occupiedCottages: 0,
-    upcomingEvents: 0,
-    openInquiries: 0,
-    totalCustomers: 0,
-    avgRating: 0,
-    monthRevenue: 0,
-    totalRevenue: 0,
-    revChange: null,
-  };
+  const today     = new Date().toISOString().slice(0, 10);
+  const thisMonth = today.slice(0, 7);
+  const lastMonth = new Date(new Date().setMonth(new Date().getMonth() - 1))
+    .toISOString().slice(0, 7);
 
-  try {
-    console.log('[Dashboard] Fetching totalReservations...');
-    const resCount = await db.prepare(`SELECT COUNT(*) AS c FROM reservations`).get();
-    stats.totalReservations = resCount?.c || 0;
-    
-    console.log('[Dashboard] Fetching totalRooms...');
-    const roomCount = await db.prepare(`SELECT COUNT(*) AS c FROM rooms WHERE is_active=1`).get();
-    stats.totalRooms = roomCount?.c || 0;
-    
-    console.log('[Dashboard] Fetching totalVenues...');
-    const venueCount = await db.prepare(`SELECT COUNT(*) AS c FROM venues WHERE is_active=1`).get();
-    stats.totalVenues = venueCount?.c || 0;
-    
-    console.log('[Dashboard] Fetching totalCottages...');
-    const cottageCount = await db.prepare(`SELECT COUNT(*) AS c FROM cottages WHERE is_active=1`).get();
-    stats.totalCottages = cottageCount?.c || 0;
-    
-    console.log('[Dashboard] Fetching totalCustomers...');
-    const custCount = await db.prepare(`SELECT COUNT(*) AS c FROM customers`).get();
-    stats.totalCustomers = custCount?.c || 0;
-    
-    console.log('[Dashboard] Stats loaded:', stats);
-  } catch (error) {
-    console.error('[Dashboard] Error fetching stats:', error);
-    // Continue with zeros
-  }
+  const totalReservations = await db.prepare(`SELECT COUNT(*) AS c FROM reservations`).get().c;
+  const todayCheckIns     = await db.prepare(`SELECT COUNT(*) AS c FROM reservations WHERE DATE(check_in_date)=? AND status IN ('confirmed','checked_in')`).get(today).c;
+  const pendingRes        = await db.prepare(`SELECT COUNT(*) AS c FROM reservations WHERE status='pending'`).get().c;
+  const pendingPayments   = await db.prepare(`SELECT COUNT(*) AS c FROM reservations WHERE payment_status IN ('unpaid','partially_paid') AND status NOT IN ('cancelled','rejected')`).get().c;
+  const availableRooms    = await db.prepare(`SELECT COUNT(*) AS c FROM rooms WHERE status='available' AND is_active=1`).get().c;
+  const occupiedRooms     = await db.prepare(`SELECT COUNT(*) AS c FROM rooms WHERE status='occupied'`).get().c;
+  const totalRooms        = await db.prepare(`SELECT COUNT(*) AS c FROM rooms WHERE is_active=1`).get().c;
+  const availableVenues   = await db.prepare(`SELECT COUNT(*) AS c FROM venues WHERE status='available' AND is_active=1`).get().c;
+  const totalVenues       = await db.prepare(`SELECT COUNT(*) AS c FROM venues WHERE is_active=1`).get().c;
+  const occupiedVenues    = await db.prepare(`SELECT COUNT(*) AS c FROM venues WHERE status IN ('reserved','occupied') AND is_active=1`).get().c;
+  const availableCottages = await db.prepare(`SELECT COUNT(*) AS c FROM cottages WHERE status='available' AND is_active=1`).get().c;
+  const totalCottages     = await db.prepare(`SELECT COUNT(*) AS c FROM cottages WHERE is_active=1`).get().c;
+  const occupiedCottages  = await db.prepare(`SELECT COUNT(*) AS c FROM cottages WHERE status IN ('reserved','occupied') AND is_active=1`).get().c;
+  const upcomingEvents    = await db.prepare(`SELECT COUNT(*) AS c FROM events WHERE event_date>=? AND status NOT IN ('completed','cancelled')`).get(today).c;
+  const openInquiries     = await db.prepare(`SELECT COUNT(*) AS c FROM inquiries WHERE status IN ('open','in_progress')`).get().c;
+  const totalCustomers    = await db.prepare(`SELECT COUNT(*) AS c FROM customers`).get().c;
+  const avgRating         = await db.prepare(`SELECT ROUND(AVG(rating),1) AS a FROM feedback`).get().a || 0;
 
-  console.log('[Dashboard] Rendering template...');
-  
+  // Revenue counts both 'received' and 'verified' payments (a verified payment
+  // is real, collected money). Refunded/rejected payments are excluded.
+  const monthRevRow  = await db.prepare(`SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE status IN ('received','verified') AND strftime('%Y-%m',payment_date)=?`).get(thisMonth);
+  const lastMonthRev = await db.prepare(`SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE status IN ('received','verified') AND strftime('%Y-%m',payment_date)=?`).get(lastMonth).t;
+  const totalRevRow  = await db.prepare(`SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE status IN ('received','verified')`).get();
+  const revChange    = lastMonthRev > 0
+    ? Math.round(((monthRevRow.t - lastMonthRev) / lastMonthRev) * 100) : null;
+
+  const revenueChart = await db.prepare(`
+    SELECT strftime('%Y-%m',payment_date) AS month, SUM(amount) AS revenue
+    FROM payments WHERE status IN ('received','verified') AND payment_date>=date('now','-6 months')
+    GROUP BY month ORDER BY month`).all();
+
+  const statusDist = await db.prepare(`SELECT status, COUNT(*) AS cnt FROM reservations GROUP BY status`).all();
+
+  const recentReservations = await db.prepare(`
+    SELECT r.*, c.first_name||' '||c.last_name AS customer_name
+    FROM reservations r JOIN customers c ON c.id=r.customer_id
+    ORDER BY r.created_at DESC LIMIT 8`).all();
+
+  const invAlerts = await db.prepare(`
+    SELECT name, available_qty, reorder_level
+    FROM inventory_items WHERE available_qty<=reorder_level AND is_active=1 LIMIT 5`).all();
+
+  const insights = await db.prepare(`
+    SELECT * FROM ai_insights WHERE is_dismissed=0 ORDER BY created_at DESC LIMIT 4`).all();
+
+  const nextWeek = new Date();
+  nextWeek.setDate(nextWeek.getDate() + 7);
+  const upcomingEventsList = await db.prepare(`
+    SELECT e.*, c.first_name||' '||c.last_name AS customer_name, v.name AS venue_name
+    FROM events e JOIN customers c ON c.id=e.customer_id
+    LEFT JOIN venues v ON v.id=e.venue_id
+    WHERE e.event_date BETWEEN ? AND ? AND e.status NOT IN ('completed','cancelled')
+    ORDER BY e.event_date LIMIT 5`).all(today, nextWeek.toISOString().slice(0, 10));
+
   res.render('dashboard/admin', {
     title:  'Admin Dashboard – Balai-Reserve',
     layout: 'layouts/main',
-    stats,
-    recentReservations: [],
-    upcomingEventsList: [],
-    invAlerts: [],
-    insights: [],
-    revenueChartJson: JSON.stringify([]),
-    statusDistJson:   JSON.stringify([]),
+    stats: {
+      totalReservations, todayCheckIns, pendingRes, pendingPayments,
+      availableRooms, occupiedRooms, totalRooms,
+      availableVenues, totalVenues, occupiedVenues,
+      availableCottages, totalCottages, occupiedCottages,
+      upcomingEvents, openInquiries, totalCustomers, avgRating,
+      monthRevenue: monthRevRow.t,
+      totalRevenue: totalRevRow.t,
+      revChange,
+    },
+    recentReservations,
+    upcomingEventsList,
+    invAlerts,
+    insights,
+    revenueChartJson: JSON.stringify(revenueChart),
+    statusDistJson:   JSON.stringify(statusDist),
   });
 }
 
-// ── Staff Dashboard ─────────────────────────────────────────────────────────
+// ΓöÇΓöÇ Staff Dashboard (unified) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 async function renderStaff(req, res) {
   const today = new Date().toISOString().slice(0, 10);
 
-  const stats = {
-    pendingRes: 0,
-    confirmedRes: 0,
-    checkedInToday: 0,
-    checkOutsToday: 0,
-    pendingPayments: 0,
-    availableRooms: 0,
-    openInquiries: 0,
-    upcomingEvents: 0,
-  };
+  const pendingRes      = await db.prepare(`SELECT COUNT(*) AS c FROM reservations WHERE status='pending'`).get().c;
+  const confirmedRes    = await db.prepare(`SELECT COUNT(*) AS c FROM reservations WHERE status='confirmed'`).get().c;
+  const checkedInToday  = await db.prepare(`SELECT COUNT(*) AS c FROM reservations WHERE DATE(check_in_date)=? AND status='checked_in'`).get(today).c;
+  const checkOutsToday  = await db.prepare(`SELECT COUNT(*) AS c FROM reservations WHERE DATE(check_out_date)=? AND status='checked_in'`).get(today).c;
+  const pendingPayments = await db.prepare(`SELECT COUNT(*) AS c FROM reservations WHERE payment_status IN ('unpaid','partially_paid') AND status NOT IN ('cancelled','rejected','completed')`).get().c;
+  const availableRooms  = await db.prepare(`SELECT COUNT(*) AS c FROM rooms WHERE status='available' AND is_active=1`).get().c;
+  const openInquiries   = await db.prepare(`SELECT COUNT(*) AS c FROM inquiries WHERE status IN ('open','in_progress')`).get().c;
+  const upcomingEvents  = await db.prepare(`SELECT COUNT(*) AS c FROM events WHERE event_date>=? AND status NOT IN ('completed','cancelled')`).get(today).c;
 
-  try {
-    stats.pendingRes = (await db.prepare(`SELECT COUNT(*) AS c FROM reservations WHERE status='pending'`).get())?.c || 0;
-    stats.confirmedRes = (await db.prepare(`SELECT COUNT(*) AS c FROM reservations WHERE status='confirmed'`).get())?.c || 0;
-    stats.availableRooms = (await db.prepare(`SELECT COUNT(*) AS c FROM rooms WHERE status='available' AND is_active=1`).get())?.c || 0;
-  } catch (error) {
-    console.error('Error fetching staff stats:', error);
-  }
+  // Today's arrivals
+  const arrivals = await db.prepare(`
+    SELECT r.*, c.first_name||' '||c.last_name AS customer_name, c.phone AS customer_phone
+    FROM reservations r JOIN customers c ON c.id=r.customer_id
+    WHERE DATE(r.check_in_date)=? AND r.status IN ('confirmed','awaiting_payment','pending')
+    ORDER BY r.check_in_date LIMIT 10`).all(today);
+
+  // Today's departures
+  const departures = await db.prepare(`
+    SELECT r.*, c.first_name||' '||c.last_name AS customer_name
+    FROM reservations r JOIN customers c ON c.id=r.customer_id
+    WHERE DATE(r.check_out_date)=? AND r.status='checked_in'
+    ORDER BY r.check_out_date LIMIT 10`).all(today);
+
+  // Pending reservations needing attention
+  const pendingList = await db.prepare(`
+    SELECT r.*, c.first_name||' '||c.last_name AS customer_name
+    FROM reservations r JOIN customers c ON c.id=r.customer_id
+    WHERE r.status='pending'
+    ORDER BY r.created_at ASC LIMIT 8`).all();
+
+  // Recent inquiries
+  const recentInquiries = await db.prepare(`
+    SELECT * FROM inquiries WHERE status IN ('open','in_progress')
+    ORDER BY created_at DESC LIMIT 6`).all();
 
   res.render('dashboard/reservation-staff', {
     title:  'Reservations Dashboard',
     layout: 'layouts/main',
-    stats,
-    arrivals: [],
-    departures: [],
-    pendingList: [],
-    recentInquiries: [],
+    stats: { pendingRes, confirmedRes, checkedInToday, checkOutsToday, pendingPayments, availableRooms, openInquiries, upcomingEvents },
+    arrivals,
+    departures,
+    pendingList,
+    recentInquiries,
     today,
   });
 }

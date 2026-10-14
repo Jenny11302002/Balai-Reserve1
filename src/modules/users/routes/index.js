@@ -14,7 +14,7 @@ const router     = express.Router();
 const ADMIN_ONLY = requireRole('admin');
 
 // GET /users
-router.get('/', requireAuth, ADMIN_ONLY, (req, res) => {
+router.get('/', requireAuth, ADMIN_ONLY, async (req, res) => {
   const { search = '', role = '', status = '', page = 1 } = req.query;
   const limit  = 20;
   const offset = (parseInt(page) - 1) * limit;
@@ -53,7 +53,7 @@ router.get('/', requireAuth, ADMIN_ONLY, (req, res) => {
 });
 
 // GET /users/new
-router.get('/new', requireAuth, ADMIN_ONLY, (req, res) => {
+router.get('/new', requireAuth, ADMIN_ONLY, async (req, res) => {
   // Exclude 'admin' and 'customer' — only one admin allowed, customers are self-registered
   const roles = await db.prepare(`SELECT * FROM roles WHERE name NOT IN ('customer','admin') ORDER BY name`).all();
   res.render('users/form', {
@@ -77,7 +77,7 @@ router.post('/',
       return true;
     }),
   ],
-  (req, res) => {
+  async (req, res) => {
     const errors = validationResult(req);
     const roles  = await db.prepare(`SELECT * FROM roles WHERE name NOT IN ('customer','admin') ORDER BY name`).all();
     if (!errors.isEmpty()) {
@@ -112,7 +112,7 @@ router.post('/',
 );
 
 // GET /users/:id/edit
-router.get('/:id/edit', requireAuth, ADMIN_ONLY, (req, res) => {
+router.get('/:id/edit', requireAuth, ADMIN_ONLY, async (req, res) => {
   const user  = await db.prepare(`SELECT u.*, r.name AS role_name FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?`).get(req.params.id);
   if (!user) { req.session.flash = { error: 'User not found.' }; return res.redirect('/users'); }
 
@@ -139,7 +139,7 @@ router.post('/:id/edit',
     body('email').isEmail().normalizeEmail().withMessage('Enter a valid email address.'),
     body('role_id').isInt().withMessage('Select a role.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const old    = await db.prepare(`SELECT * FROM users WHERE id=?`).get(req.params.id);
     const roles  = await db.prepare(`SELECT * FROM roles WHERE name NOT IN ('customer','admin') ORDER BY name`).all();
     const errors = validationResult(req);
@@ -162,7 +162,7 @@ router.post('/:id/edit',
       });
     }
 
-    await db.prepare(`UPDATE users SET first_name=?,last_name=?,email=?,role_id=?,phone=?,updated_at=NOW() WHERE id=?`)
+    await db.prepare(`UPDATE users SET first_name=?,last_name=?,email=?,role_id=?,phone=?,updated_at=datetime('now') WHERE id=?`)
       .run(first_name, last_name, email, role_id, phone || '', req.params.id);
 
     req.audit('update', 'users', req.params.id, { email: old.email, role_id: old.role_id }, { email, role_id });
@@ -172,7 +172,7 @@ router.post('/:id/edit',
 );
 
 // POST /users/:id/toggle  — activate / deactivate
-router.post('/:id/toggle', requireAuth, ADMIN_ONLY, (req, res) => {
+router.post('/:id/toggle', requireAuth, ADMIN_ONLY, async (req, res) => {
   if (parseInt(req.params.id) === req.session.user.id) {
     req.session.flash = { error: 'You cannot deactivate your own account.' };
     return res.redirect('/users');
@@ -181,7 +181,7 @@ router.post('/:id/toggle', requireAuth, ADMIN_ONLY, (req, res) => {
   if (!user) { req.session.flash = { error: 'User not found.' }; return res.redirect('/users'); }
 
   const newActive = user.is_active ? 0 : 1;
-  await db.prepare(`UPDATE users SET is_active=?, updated_at=NOW() WHERE id=?`).run(newActive, user.id);
+  await db.prepare(`UPDATE users SET is_active=?, updated_at=datetime('now') WHERE id=?`).run(newActive, user.id);
   req.audit('toggle_active', 'users', user.id, { is_active: user.is_active }, { is_active: newActive });
 
   req.session.flash = {
@@ -191,7 +191,7 @@ router.post('/:id/toggle', requireAuth, ADMIN_ONLY, (req, res) => {
 });
 
 // GET /users/:id  — view profile
-router.get('/:id', requireAuth, ADMIN_ONLY, (req, res) => {
+router.get('/:id', requireAuth, ADMIN_ONLY, async (req, res) => {
   const user = await db.prepare(`SELECT u.*, r.name AS role_name, r.label AS role_label FROM users u JOIN roles r ON r.id=u.role_id WHERE u.id=?`).get(req.params.id);
   if (!user) { req.session.flash = { error: 'User not found.' }; return res.redirect('/users'); }
 

@@ -17,7 +17,7 @@ const { requireAuth } = require('../../../middleware/auth');
 const router = express.Router();
 
 // GET /profile
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const user = await db.prepare(`
     SELECT u.*, r.name AS role_name, r.label AS role_label
     FROM users u JOIN roles r ON r.id = u.role_id
@@ -53,7 +53,7 @@ router.post('/',
     body('last_name').trim().notEmpty().withMessage('Last name is required.'),
     body('phone').optional({ checkFalsy: true }).trim(),
   ],
-  (req, res) => {
+  async (req, res) => {
     const user = await db.prepare(`
       SELECT u.*, r.name AS role_name, r.label AS role_label
       FROM users u JOIN roles r ON r.id = u.role_id
@@ -74,7 +74,7 @@ router.post('/',
     const old = { first_name: user.first_name, last_name: user.last_name, phone: user.phone };
 
     await db.prepare(`
-      UPDATE users SET first_name=?, last_name=?, phone=?, updated_at=NOW()
+      UPDATE users SET first_name=?, last_name=?, phone=?, updated_at=datetime('now')
       WHERE id=?
     `).run(first_name, last_name, phone || '', req.session.user.id);
 
@@ -99,7 +99,7 @@ router.post('/password',
       return true;
     }),
   ],
-  (req, res) => {
+  async (req, res) => {
     const user = await db.prepare(`
       SELECT u.*, r.name AS role_name, r.label AS role_label
       FROM users u JOIN roles r ON r.id = u.role_id
@@ -127,7 +127,7 @@ router.post('/password',
     }
 
     const hash = bcrypt.hashSync(req.body.new_password, 12);
-    await db.prepare(`UPDATE users SET password_hash=?, updated_at=NOW() WHERE id=?`).run(hash, user.id);
+    await db.prepare(`UPDATE users SET password_hash=?, updated_at=datetime('now') WHERE id=?`).run(hash, user.id);
 
     req.audit('password_change', 'profile', user.id, null, null);
     req.session.flash = { success: 'Password changed successfully.' };

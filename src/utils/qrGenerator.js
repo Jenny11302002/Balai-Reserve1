@@ -10,7 +10,6 @@ const path   = require('path');
 const fs     = require('fs');
 const { v4: uuidv4 } = require('uuid');
 const db     = require('../config/database');
-const { ensureDir } = require('./ensureDir');
 
 const QR_DIR = process.env.QR_PATH || './public/qrcodes';
 
@@ -21,7 +20,9 @@ const QR_DIR = process.env.QR_PATH || './public/qrcodes';
  * @returns {object} { token, qrPath }
  */
 async function generateReservationQR(reservationId, bookingRef) {
-  ensureDir(QR_DIR);
+  if (!fs.existsSync(QR_DIR)) {
+    fs.mkdirSync(QR_DIR, { recursive: true });
+  }
 
   const token    = uuidv4();
   const filename = `qr-${bookingRef}-${token.slice(0, 8)}.png`;
@@ -41,7 +42,7 @@ async function generateReservationQR(reservationId, bookingRef) {
   const expiresAt = new Date();
   expiresAt.setDate(expiresAt.getDate() + 30); // valid for 30 days
 
-  db.prepare(`
+  await db.prepare(`
     INSERT INTO qr_codes (reservation_id, token, qr_path, used, expires_at)
     VALUES (?, ?, ?, 0, ?)
   `).run(reservationId, token, publicPath, expiresAt.toISOString());
@@ -52,8 +53,8 @@ async function generateReservationQR(reservationId, bookingRef) {
 /**
  * Validate a QR token. Returns the reservation or null.
  */
-function validateQRToken(token) {
-  const qr = db.prepare(`
+async function validateQRToken(token) {
+  const qr = await db.prepare(`
     SELECT qr.*, r.booking_ref, r.status, r.payment_status, r.customer_id
     FROM qr_codes qr
     JOIN reservations r ON r.id = qr.reservation_id
@@ -78,8 +79,8 @@ function validateQRToken(token) {
 /**
  * Mark a QR code as used.
  */
-function consumeQRToken(token) {
-  db.prepare(`
+async function consumeQRToken(token) {
+  await db.prepare(`
     UPDATE qr_codes SET used = 1, used_at = datetime('now') WHERE token = ?
   `).run(token);
 }

@@ -14,7 +14,7 @@ const router     = express.Router();
 const CAN_MANAGE = ['admin','staff'];
 
 // GET /crm – Customer list
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { search='', type='', status='', page=1 } = req.query;
   const limit  = 20;
   const offset = (parseInt(page) - 1) * limit;
@@ -51,7 +51,7 @@ router.get('/', requireAuth, (req, res) => {
 });
 
 // GET /crm/customers/new
-router.get('/customers/new', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.get('/customers/new', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   res.render('crm/customer-form', { title: 'Add Customer', layout: 'layouts/main', customer: null, errors: [], old: {} });
 });
 
@@ -65,8 +65,8 @@ router.post('/customers',
     // Password is optional, but if given it must be at least 8 chars and needs an email.
     body('login_password').optional({ checkFalsy: true }).isLength({ min: 8 }).withMessage('Login password must be at least 8 characters.'),
   ],
-  (req, res) => {
-    const renderErr = (msgs) => res.render('crm/customer-form', {
+  async (req, res) => {
+    const renderErr = async (msgs) => res.render('crm/customer-form', {
       title: 'Add Customer', layout: 'layouts/main', customer: null,
       errors: Array.isArray(msgs) ? msgs : [{ msg: msgs }], old: req.body,
     });
@@ -94,16 +94,16 @@ router.post('/customers',
         let userId = null;
 
         if (wantsLogin) {
-          const customerRole = await db.prepare(`SELECT id FROM roles WHERE name = 'customer'`).get();
+          const customerRole = db.prepare(`SELECT id FROM roles WHERE name = 'customer'`).get();
           if (!customerRole) throw new Error('Customer role is missing. Cannot create a login.');
           const hash = bcrypt.hashSync(loginPassword, 12);
-          userId = await db.prepare(`
-            INSERT INTO users (role_id, first_name, last_name, email, password_hash, phone, is_active, auth_provider, email_verified)
-            VALUES (?, ?, ?, ?, ?, ?, 1, 'local', 0)
+          userId = db.prepare(`
+            INSERT INTO users (role_id, first_name, last_name, email, password_hash, phone, is_active)
+            VALUES (?, ?, ?, ?, ?, ?, 1)
           `).run(customerRole.id, first_name, last_name, email, hash, phone || '').lastInsertRowid;
         }
 
-        await db.prepare(`
+        db.prepare(`
           INSERT INTO customers (user_id, customer_code, first_name, last_name, email, phone, address, preferred_contact, customer_type, notes)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `).run(userId, code, first_name, last_name, email || '', phone || '', address || '', preferred_contact || 'email', customer_type || 'regular', notes || '');
@@ -122,7 +122,7 @@ router.post('/customers',
 );
 
 // GET /crm/customers/:id – Customer profile
-router.get('/customers/:id', requireAuth, (req, res) => {
+router.get('/customers/:id', requireAuth, async (req, res) => {
   const customer = await db.prepare(`SELECT * FROM customers WHERE id=?`).get(req.params.id);
   if (!customer) { req.session.flash = { error: 'Customer not found.' }; return res.redirect('/crm'); }
 
@@ -150,29 +150,29 @@ router.get('/customers/:id', requireAuth, (req, res) => {
 });
 
 // POST /crm/customers/:id/edit
-router.post('/customers/:id/edit', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.post('/customers/:id/edit', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   const { first_name, last_name, email, phone, address, preferred_contact, customer_type, status, notes } = req.body;
   await db.prepare(`
     UPDATE customers SET first_name=?, last_name=?, email=?, phone=?, address=?, preferred_contact=?,
-    customer_type=?, status=?, notes=?, updated_at=NOW() WHERE id=?
+    customer_type=?, status=?, notes=?, updated_at=datetime('now') WHERE id=?
   `).run(first_name, last_name, email||'', phone||'', address||'', preferred_contact||'email', customer_type||'regular', status||'active', notes||'', req.params.id);
   req.session.flash = { success: 'Customer updated.' };
   res.redirect(`/crm/customers/${req.params.id}`);
 });
 
 // POST /crm/activities – Log a CRM activity
-router.post('/activities', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.post('/activities', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   const { customer_id, activity_type, subject, description, follow_up_at } = req.body;
   await db.prepare(`
     INSERT INTO crm_activities (customer_id, activity_type, subject, description, staff_id, status, completed_at, follow_up_at)
-    VALUES (?, ?, ?, ?, ?, 'completed', NOW(), ?)
+    VALUES (?, ?, ?, ?, ?, 'completed', datetime('now'), ?)
   `).run(customer_id, activity_type, subject || '', description || '', req.session.user.id, follow_up_at || null);
   req.session.flash = { success: 'Activity logged.' };
   res.redirect(`/crm/customers/${customer_id}`);
 });
 
 // GET /crm/calls – Sales calls list
-router.get('/calls', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.get('/calls', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   const { search='', status='', page=1 } = req.query;
   const limit  = 20;
   const offset = (parseInt(page)-1)*limit;
@@ -205,7 +205,7 @@ router.get('/calls', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
 });
 
 // POST /crm/calls
-router.post('/calls', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.post('/calls', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   const { customer_id, call_date, call_time, purpose, result, notes, follow_up_at, status } = req.body;
   await db.prepare(`
     INSERT INTO sales_calls (customer_id, staff_id, call_date, call_time, purpose, result, notes, follow_up_at, status)
@@ -217,7 +217,7 @@ router.post('/calls', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
 });
 
 // GET /crm/tickets – Support tickets
-router.get('/tickets', requireAuth, (req, res) => {
+router.get('/tickets', requireAuth, async (req, res) => {
   const { search='', status='', priority='', page=1 } = req.query;
   const limit  = 20;
   const offset = (parseInt(page)-1)*limit;

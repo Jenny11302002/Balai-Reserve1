@@ -46,7 +46,7 @@ async function notifyUser(userId, type, title, message, link = null) {
 }
 
 /**
- * Notify the customer that owns a reservation (resolves customer → user_id).
+ * Notify the customer that owns a reservation (resolves customer ΓåÆ user_id).
  * Safe no-op if the customer has no linked user account.
  */
 async function notifyReservationCustomer(reservationId, type, title, message, link = null) {
@@ -58,7 +58,7 @@ async function notifyReservationCustomer(reservationId, type, title, message, li
       WHERE r.id = ?
     `).get(reservationId);
     if (row && row.user_id) {
-      await notifyUser(row.user_id, type, title, message, link);
+      notifyUser(row.user_id, type, title, message, link);
     }
   } catch { /* non-critical */ }
 }
@@ -68,18 +68,16 @@ async function notifyReservationCustomer(reservationId, type, title, message, li
  */
 async function notifyAllAdmins(type, title, message, link = null) {
   try {
-    const admins = (await db.prepare(`
+    const admins = await db.prepare(`
       SELECT u.id FROM users u
       JOIN roles r ON r.id = u.role_id
       WHERE r.name = 'admin' AND u.is_active = 1
-    `).all()) || [];
-    
-    for (const a of admins) {
-      await db.prepare(`
-        INSERT INTO notifications (user_id, type, title, message, link)
-        VALUES (?, ?, ?, ?, ?)
-      `).run(a.id, type, title, message, link);
-    }
+    `).all();
+    const stmt = await db.prepare(`
+      INSERT INTO notifications (user_id, type, title, message, link)
+      VALUES (?, ?, ?, ?, ?)
+    `);
+    for (const a of admins) stmt.run(a.id, type, title, message, link);
   } catch { /* non-critical */ }
 }
 
@@ -100,12 +98,12 @@ async function getUnreadCount(userId) {
  */
 async function getRecentNotifications(userId, limit = 10) {
   try {
-    return (await db.prepare(`
+    return await db.prepare(`
       SELECT * FROM notifications
       WHERE user_id = ?
       ORDER BY created_at DESC
       LIMIT ?
-    `).all(userId, limit)) || [];
+    `).all(userId, limit);
   } catch { return []; }
 }
 

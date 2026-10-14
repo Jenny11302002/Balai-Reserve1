@@ -17,13 +17,12 @@ const { body, validationResult } = require('express-validator');
 const db      = require('../../../config/database');
 const { requireAuth, requireRole } = require('../../../middleware/auth');
 const { notifyAllAdmins, notifyReservationCustomer } = require('../../../utils/notifications');
-const { ensureDir } = require('../../../utils/ensureDir');
 
 const router = express.Router();
 
-// ── Multer: refund payout proof screenshots ─────────────────────────────────
+// ΓöÇΓöÇ Multer: refund payout proof screenshots ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const REFUND_PROOF_DIR = path.join(process.cwd(), 'uploads', 'refund_proofs');
-ensureDir(REFUND_PROOF_DIR);
+if (!fs.existsSync(REFUND_PROOF_DIR)) fs.mkdirSync(REFUND_PROOF_DIR, { recursive: true });
 
 const refundProofStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, REFUND_PROOF_DIR),
@@ -43,7 +42,7 @@ const refundProofUpload = multer({
 });
 
 // GET /payments
-router.get('/', requireAuth, requireRole('admin', 'staff'), (req, res) => {
+router.get('/', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
   const { search = '', method = '', status = '', from = '', to = '', page = 1 } = req.query;
   const limit  = 20;
   const offset = (parseInt(page) - 1) * limit;
@@ -108,7 +107,7 @@ router.get('/', requireAuth, requireRole('admin', 'staff'), (req, res) => {
 });
 
 // GET /payments/:id
-router.get('/:id', requireAuth, requireRole('admin', 'staff'), (req, res) => {
+router.get('/:id', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
   const payment = await db.prepare(`
     SELECT p.*,
            r.booking_ref, r.reservation_type, r.total_amount AS res_total,
@@ -150,7 +149,7 @@ router.get('/:id', requireAuth, requireRole('admin', 'staff'), (req, res) => {
 });
 
 // POST /payments/:id/verify  — mark as verified
-router.post('/:id/verify', requireAuth, requireRole('admin'), (req, res) => {
+router.post('/:id/verify', requireAuth, requireRole('admin'), async (req, res) => {
   const payment = await db.prepare(`SELECT * FROM payments WHERE id = ?`).get(req.params.id);
   if (!payment) return res.redirect('/payments');
 
@@ -167,7 +166,7 @@ router.post('/:id/refund',
     body('refund_amount').isFloat({ min: 0.01 }).withMessage('Enter a valid refund amount.'),
     body('refund_reason').trim().notEmpty().withMessage('Refund reason is required.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const payment = await db.prepare(`
       SELECT p.*, r.total_amount AS res_total, r.payment_status, r.booking_ref
       FROM payments p JOIN reservations r ON r.id = p.reservation_id
@@ -192,11 +191,11 @@ router.post('/:id/refund',
 
     db.transaction(() => {
       // Insert a negative/refund payment record
-      await db.prepare(`
+      db.prepare(`
         INSERT INTO payments
           (reservation_id, reference_number, amount, payment_method, payment_date,
            payment_type, status, received_by, notes)
-        VALUES (?, ?, ?, ?, CURRENT_DATE, 'refund', 'refunded', ?, ?)
+        VALUES (?, ?, ?, ?, date('now'), 'refund', 'refunded', ?, ?)
       `).run(
         payment.reservation_id,
         refundRef,
@@ -207,16 +206,16 @@ router.post('/:id/refund',
       );
 
       // Mark the original payment as refunded
-      await db.prepare(`UPDATE payments SET status = 'refunded', notes = COALESCE(notes,'') || ' [Refunded: ' || ? || ']' WHERE id = ?`).run(refundRef, payment.id);
+      db.prepare(`UPDATE payments SET status = 'refunded', notes = COALESCE(notes,'') || ' [Refunded: ' || ? || ']' WHERE id = ?`).run(refundRef, payment.id);
 
       // Recalculate reservation payment_status
-      const allPay = await db.prepare(`SELECT * FROM payments WHERE reservation_id = ?`).all(payment.reservation_id);
+      const allPay = db.prepare(`SELECT * FROM payments WHERE reservation_id = ?`).all(payment.reservation_id);
       const net    = allPay.filter(p => p.status !== 'refunded').reduce((s, p) => s + p.amount, 0);
       let   newPs  = 'unpaid';
       if (net >= payment.res_total) newPs = 'fully_paid';
       else if (net > 0)             newPs = 'partially_paid';
 
-      await db.prepare(`UPDATE reservations SET payment_status = ?, updated_at = NOW() WHERE id = ?`).run(newPs, payment.reservation_id);
+      db.prepare(`UPDATE reservations SET payment_status = ?, updated_at = datetime('now') WHERE id = ?`).run(newPs, payment.reservation_id);
     })();
 
     req.audit('refund', 'payments', payment.id, { amount: payment.amount }, { refunded: refundAmt, reason: req.body.refund_reason });
@@ -227,9 +226,9 @@ router.post('/:id/refund',
   }
 );
 
-// ── GET /payments/refunds/requests ───────────────────────────────────────────
+// ΓöÇΓöÇ GET /payments/refunds/requests ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Admin/staff review list of customer refund requests.
-router.get('/refunds/requests', requireAuth, requireRole('admin', 'staff'), (req, res) => {
+router.get('/refunds/requests', requireAuth, requireRole('admin', 'staff'), async (req, res) => {
   const { status = 'pending' } = req.query;
   let where = '';
   const params = [];
@@ -262,13 +261,13 @@ router.get('/refunds/requests', requireAuth, requireRole('admin', 'staff'), (req
   });
 });
 
-// ── POST /payments/refunds/requests/:id/review ───────────────────────────────
+// ΓöÇΓöÇ POST /payments/refunds/requests/:id/review ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Admin/staff approve or reject a refund request. Approving records the refund
 // against the reservation's payments and marks it refunded.
 router.post('/refunds/requests/:id/review',
   requireAuth, requireRole('admin', 'staff'),
   refundProofUpload.single('payout_proof'),
-  (req, res) => {
+  async (req, res) => {
     const action    = (req.body.action || '').trim();       // 'approve' | 'reject'
     const adminNote = (req.body.admin_note || '').trim();
     const payoutMethod = (req.body.payout_method || 'gcash').trim();  // gcash | cash | bank
@@ -305,7 +304,7 @@ router.post('/refunds/requests/:id/review',
 
       db.transaction(() => {
         // Refund amount = net paid on the booking (can't exceed what's collected).
-        const netPaid = await db.prepare(
+        const netPaid = db.prepare(
           "SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE reservation_id = ? AND status IN ('received','verified')"
         ).get(rr.reservation_id).t;
         const refundAmt = Math.min(rr.amount || netPaid, netPaid);
@@ -317,13 +316,13 @@ router.post('/refunds/requests/:id/review',
             + (payoutRef ? ` (ref: ${payoutRef})` : '')
             + (rr.gcash_number ? ` to GCash ${rr.gcash_number}` : '')
             + (adminNote ? `. ${adminNote}` : '');
-          await db.prepare(`
+          db.prepare(`
             INSERT INTO payments (reservation_id, reference_number, amount, payment_method, payment_date, payment_type, status, received_by, notes, submitted_by)
-            VALUES (?, ?, ?, ?, CURRENT_DATE, 'refund', 'refunded', ?, ?, 'staff')
+            VALUES (?, ?, ?, ?, date('now'), 'refund', 'refunded', ?, ?, 'staff')
           `).run(rr.reservation_id, refundRef, refundAmt, payoutMethod, req.session.user.id, payNote);
 
           // Mark all previously collected payments as refunded so they leave the balance.
-          await db.prepare(
+          db.prepare(
             "UPDATE payments SET status = 'refunded', notes = COALESCE(notes,'') || ' [Refunded via request #' || ? || ']' WHERE reservation_id = ? AND status IN ('received','verified')"
           ).run(rr.id, rr.reservation_id);
         }
@@ -331,33 +330,33 @@ router.post('/refunds/requests/:id/review',
         // A refunded booking is cancelled: mark it cancelled + refunded so it
         // can no longer be checked in, and log the status change.
         const prevStatus = reservation.status;
-        await db.prepare(
-          "UPDATE reservations SET status = 'cancelled', payment_status = 'refunded', updated_at = NOW() WHERE id = ?"
+        db.prepare(
+          "UPDATE reservations SET status = 'cancelled', payment_status = 'refunded', updated_at = datetime('now') WHERE id = ?"
         ).run(rr.reservation_id);
         if (prevStatus !== 'cancelled') {
-          await db.prepare(
+          db.prepare(
             "INSERT INTO reservation_status_history (reservation_id, from_status, to_status, changed_by, notes) VALUES (?, ?, 'cancelled', ?, 'Auto-cancelled after refund approval')"
           ).run(rr.reservation_id, prevStatus, req.session.user.id);
         }
 
         // Free up the booked room/venue/cottage so it shows as available again.
-        const items = await db.prepare('SELECT * FROM reservation_items WHERE reservation_id = ?').all(rr.reservation_id);
+        const items = db.prepare('SELECT * FROM reservation_items WHERE reservation_id = ?').all(rr.reservation_id);
         for (const item of items) {
-          if (item.item_type === 'room')    await db.prepare("UPDATE rooms SET status='available', updated_at=NOW() WHERE id=?").run(item.item_id);
-          if (item.item_type === 'venue')   await db.prepare("UPDATE venues SET status='available', updated_at=NOW() WHERE id=?").run(item.item_id);
-          if (item.item_type === 'cottage') await db.prepare("UPDATE cottages SET status='available', updated_at=NOW() WHERE id=?").run(item.item_id);
+          if (item.item_type === 'room')    db.prepare("UPDATE rooms SET status='available', updated_at=datetime('now') WHERE id=?").run(item.item_id);
+          if (item.item_type === 'venue')   db.prepare("UPDATE venues SET status='available', updated_at=datetime('now') WHERE id=?").run(item.item_id);
+          if (item.item_type === 'cottage') db.prepare("UPDATE cottages SET status='available', updated_at=datetime('now') WHERE id=?").run(item.item_id);
         }
 
         // Invalidate any check-in QR codes so they can no longer be scanned.
-        await db.prepare("UPDATE qr_codes SET used = 1, used_at = NOW() WHERE reservation_id = ?").run(rr.reservation_id);
+        db.prepare("UPDATE qr_codes SET used = 1, used_at = datetime('now') WHERE reservation_id = ?").run(rr.reservation_id);
 
         // Any guest records for this booking should no longer be "expected".
-        await db.prepare("UPDATE guests SET status='no_show', updated_at=NOW() WHERE reservation_id=? AND status NOT IN ('checked_out')").run(rr.reservation_id);
+        db.prepare("UPDATE guests SET status='no_show', updated_at=datetime('now') WHERE reservation_id=? AND status NOT IN ('checked_out')").run(rr.reservation_id);
 
-        await db.prepare(`
+        db.prepare(`
           UPDATE refund_requests
-          SET status = 'approved', admin_note = ?, payout_method = ?, payout_ref = ?, payout_proof = ?, payout_date = CURRENT_DATE,
-              reviewed_by = ?, reviewed_at = NOW()
+          SET status = 'approved', admin_note = ?, payout_method = ?, payout_ref = ?, payout_proof = ?, payout_date = date('now'),
+              reviewed_by = ?, reviewed_at = datetime('now')
           WHERE id = ?
         `).run(adminNote || null, payoutMethod, payoutRef || null, payoutProof, req.session.user.id, rr.id);
       })();
@@ -379,7 +378,7 @@ router.post('/refunds/requests/:id/review',
         return res.redirect('/payments/refunds/requests');
       }
       await db.prepare(`
-        UPDATE refund_requests SET status = 'rejected', admin_note = ?, reviewed_by = ?, reviewed_at = NOW() WHERE id = ?
+        UPDATE refund_requests SET status = 'rejected', admin_note = ?, reviewed_by = ?, reviewed_at = datetime('now') WHERE id = ?
       `).run(adminNote, req.session.user.id, rr.id);
 
       req.audit('refund_reject', 'refund_requests', rr.id, { status: 'pending' }, { status: 'rejected' });
@@ -399,10 +398,10 @@ router.post('/refunds/requests/:id/review',
   }
 );
 
-// ── GET /payments/refunds/requests/:id/proof ─────────────────────────────────
+// ΓöÇΓöÇ GET /payments/refunds/requests/:id/proof ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Access-controlled delivery of a refund payout proof. Staff/admin OR the
 // owning customer may view it. Never served publicly.
-router.get('/refunds/requests/:id/proof', requireAuth, (req, res) => {
+router.get('/refunds/requests/:id/proof', requireAuth, async (req, res) => {
   const rr = await db.prepare(`
     SELECT rr.payout_proof, c.user_id AS owner_user_id
     FROM refund_requests rr

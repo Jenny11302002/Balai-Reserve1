@@ -24,10 +24,8 @@ CREATE TABLE IF NOT EXISTS users (
   password_hash  TEXT NOT NULL DEFAULT '',
   phone          TEXT,
   avatar         TEXT,
+  google_sub     TEXT,
   is_active      INTEGER NOT NULL DEFAULT 1,
-  auth_provider  TEXT NOT NULL DEFAULT 'local',  -- local, google
-  firebase_uid   TEXT,                           -- Firebase UID for Google Sign-In
-  email_verified INTEGER NOT NULL DEFAULT 0,
   last_login     TEXT,
   created_at     TEXT DEFAULT (datetime('now')),
   updated_at     TEXT DEFAULT (datetime('now'))

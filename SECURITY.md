@@ -15,8 +15,10 @@ the Balai-Reserve application, with emphasis on payment-proof handling.
   - `maxAge` 24 hours.
   - The session secret comes from `SESSION_SECRET`. **Set a strong secret in
     production** — do not rely on the development fallback.
-- **Google Sign-In:** Firebase ID tokens are verified server-side before a
-  session is created.
+- **Sign-in:** Users can authenticate with email and password stored in the SQL
+  database or with Google OAuth. Google OAuth uses a session-bound random state,
+  exchanges authorization codes server-side, and only accepts Google-verified
+  email addresses. Google subject IDs are stored uniquely to link accounts.
 
 ## Authorization (access control)
 - `requireAuth` — requires a logged-in session.
@@ -31,8 +33,7 @@ the Balai-Reserve application, with emphasis on payment-proof handling.
 
 ## Transport & HTTP hardening
 - **helmet** sets security headers including a Content-Security-Policy that
-  restricts script/style/connect/frame origins to the app plus the required
-  CDNs and Firebase/Google endpoints.
+  restricts script/style/connect/frame origins to the app and required CDNs.
 - **Rate limiting** (`express-rate-limit`): a stricter limiter on `/auth`
   (brute-force protection) and a global limiter on the rest of the app.
 

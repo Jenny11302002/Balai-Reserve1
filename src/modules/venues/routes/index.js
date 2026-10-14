@@ -13,13 +13,13 @@ const CAN_MANAGE = ['admin', 'staff'];
 
 // Only venue_types that exist on at least one active venue
 function getActiveVenueTypes() {
-  return await db.prepare(
+  return db.prepare(
     `SELECT DISTINCT venue_type FROM venues WHERE is_active = 1 ORDER BY venue_type`
   ).all().map(r => r.venue_type);
 }
 
 // GET /venues
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { search = '', status = '', type = '', page = 1 } = req.query;
   const limit  = 12;
   const offset = (parseInt(page) - 1) * limit;
@@ -46,7 +46,7 @@ router.get('/', requireAuth, (req, res) => {
 });
 
 // GET /venues/new
-router.get('/new', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.get('/new', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   const venueTypes = getActiveVenueTypes();
   res.render('venues/form', { title: 'Add Venue', layout: 'layouts/main', venue: null, venueTypes, errors: [], old: {} });
 });
@@ -60,7 +60,7 @@ router.post('/',
     body('capacity').isInt({ min: 1 }).withMessage('Capacity must be at least 1.'),
     body('price').isFloat({ min: 0 }).withMessage('Enter a valid price.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const venueTypes = getActiveVenueTypes();
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -81,7 +81,7 @@ router.post('/',
 );
 
 // GET /venues/:id
-router.get('/:id', requireAuth, (req, res) => {
+router.get('/:id', requireAuth, async (req, res) => {
   const venue = await db.prepare(`SELECT * FROM venues WHERE id = ?`).get(req.params.id);
   if (!venue) { req.session.flash = { error: 'Venue not found.' }; return res.redirect('/venues'); }
   try { venue.amenitiesList = JSON.parse(venue.amenities || '[]'); } catch { venue.amenitiesList = []; }
@@ -99,7 +99,7 @@ router.get('/:id', requireAuth, (req, res) => {
 });
 
 // GET /venues/:id/edit
-router.get('/:id/edit', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.get('/:id/edit', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   const venue = await db.prepare(`SELECT * FROM venues WHERE id = ?`).get(req.params.id);
   if (!venue) { req.session.flash = { error: 'Venue not found.' }; return res.redirect('/venues'); }
   const venueTypes = getActiveVenueTypes();
@@ -115,7 +115,7 @@ router.post('/:id/edit',
     body('capacity').isInt({ min: 1 }).withMessage('Capacity must be at least 1.'),
     body('price').isFloat({ min: 0 }).withMessage('Enter a valid price.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const old = await db.prepare(`SELECT * FROM venues WHERE id = ?`).get(req.params.id);
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
@@ -126,7 +126,7 @@ router.post('/:id/edit',
     const amenitiesJson = amenities ? JSON.stringify(amenities.split(',').map(a => a.trim()).filter(Boolean)) : '[]';
 
     await db.prepare(`
-      UPDATE venues SET name=?, venue_type=?, capacity=?, description=?, location=?, price=?, price_note=?, amenities=?, status=?, updated_at=NOW()
+      UPDATE venues SET name=?, venue_type=?, capacity=?, description=?, location=?, price=?, price_note=?, amenities=?, status=?, updated_at=datetime('now')
       WHERE id=?
     `).run(name, venue_type, capacity, description || '', location || '', price, price_note || '', amenitiesJson, status, req.params.id);
 

@@ -9,8 +9,6 @@
   <link rel="stylesheet" href="/css/main.css" />
 </head>
 <body class="auth-body">
-
-  <!-- Back to Home -->
   <a href="/" class="auth-back-home">
     <i class="fas fa-arrow-left me-1"></i> Back to Home
   </a>
@@ -25,7 +23,6 @@
         <p class="brand-tagline">Your Home Away From Home</p>
       </div>
 
-      <%# Flash messages from redirects (e.g. Google callback failures) %>
       <% if (flash && flash.error) { %>
       <div class="alert alert-danger mb-3 py-2 small">
         <i class="fas fa-exclamation-circle me-1"></i><%= flash.error %>
@@ -43,75 +40,9 @@
       <% } %>
 
       <%- body %>
-
     </div>
   </div>
 
-  <%# Hidden form used to POST the Google ID token to the server %>
-  <form id="__googleCallbackForm" action="/auth/google/callback" method="POST" style="display:none;">
-    <input type="hidden" name="id_token" id="__googleIdToken" />
-  </form>
-
-  <%# Full-screen overlay shown while completing Google Sign-In %>
-  <div id="__googleAuthOverlay" style="display:none;position:fixed;inset:0;z-index:9999;
-       background:rgba(2,12,24,.92);backdrop-filter:blur(6px);
-       align-items:center;justify-content:center;flex-direction:column;color:#fff;">
-    <div class="spinner-border mb-3" style="width:2.5rem;height:2.5rem;color:#00e5ff;" role="status"></div>
-    <div style="font-weight:600;">Completing Google Sign-In…</div>
-    <div style="color:rgba(255,255,255,.55);font-size:.82rem;margin-top:.35rem;">Please wait</div>
-  </div>
-
   <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.2/dist/js/bootstrap.bundle.min.js"></script>
-
-  <%# ── Firebase JS SDK — loaded on auth pages only ───── %>
-  <% if (typeof loadFirebase !== 'undefined' && loadFirebase && typeof firebaseConfig !== 'undefined') { %>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
-  <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-auth-compat.js"></script>
-  <script>
-    // firebaseConfig is injected by the server route — these are PUBLIC client keys
-    if (!firebase.apps.length) {
-      firebase.initializeApp(<%- JSON.stringify(firebaseConfig) %>);
-    }
-
-    // ── Handle the redirect result on EVERY auth page load ──────────
-    // signInWithRedirect returns the user to the page that started it
-    // (login OR register). This global handler catches the result no
-    // matter which page they land on.
-    (function () {
-      'use strict';
-      function completeRedirect() {
-        firebase.auth().getRedirectResult()
-          .then(function (result) {
-            if (!result || !result.user) return;   // no pending redirect — normal page load
-            // Show overlay while we finish
-            var ov = document.getElementById('__googleAuthOverlay');
-            if (ov) ov.style.display = 'flex';
-            return result.user.getIdToken(true).then(function (idToken) {
-              document.getElementById('__googleIdToken').value = idToken;
-              document.getElementById('__googleCallbackForm').submit();
-            });
-          })
-          .catch(function (err) {
-            console.error('[Google] getRedirectResult error:', err.code, err.message);
-            var ov = document.getElementById('__googleAuthOverlay');
-            if (ov) ov.style.display = 'none';
-            // Surface the error on-page
-            var wrap = document.querySelector('.auth-card');
-            if (wrap) {
-              var el = document.createElement('div');
-              el.className = 'alert alert-danger mb-3 py-2 small';
-              el.innerHTML = '<i class="fas fa-exclamation-circle me-1"></i>Google Sign-In failed: ' +
-                (err.message || err.code || 'Unknown error');
-              wrap.insertBefore(el, wrap.children[1] || null);
-            }
-          });
-      }
-      // Firebase auth may need a tick to initialise
-      if (firebase.auth) { completeRedirect(); }
-      else { setTimeout(completeRedirect, 300); }
-    })();
-  </script>
-  <% } %>
-
 </body>
 </html>

@@ -10,14 +10,13 @@ const fs      = require('fs');
 const multer  = require('multer');
 const db      = require('../../../config/database');
 const { requireAuth, requireRole } = require('../../../middleware/auth');
-const { ensureDir } = require('../../../utils/ensureDir');
 
 const router     = express.Router();
 const ADMIN_ONLY = requireRole('admin');
 
-// ── Multer: QR code image upload ────────────────────────────────────────────
+// ΓöÇΓöÇ Multer: QR code image upload ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const QR_UPLOAD_DIR = path.join(process.cwd(), 'uploads', 'settings');
-ensureDir(QR_UPLOAD_DIR);
+if (!fs.existsSync(QR_UPLOAD_DIR)) fs.mkdirSync(QR_UPLOAD_DIR, { recursive: true });
 
 const qrStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, QR_UPLOAD_DIR),
@@ -37,24 +36,24 @@ const qrUpload = multer({
   },
 });
 
-// ── Helper: load all settings into a keyed object ───────────────────────────
-function loadSettings() {
+// ΓöÇΓöÇ Helper: load all settings into a keyed object ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+async function loadSettings() {
   const rows = await db.prepare('SELECT key, value FROM settings').all();
   const s = {};
   for (const r of rows) s[r.key] = r.value;
   return s;
 }
 
-// ── Helper: upsert a single setting key ─────────────────────────────────────
+// ΓöÇΓöÇ Helper: upsert a single setting key ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 function saveSetting(key, value) {
-  await db.prepare(`
+  db.prepare(`
     INSERT INTO settings (key, value) VALUES (?, ?)
-    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = NOW()
+    ON CONFLICT(key) DO UPDATE SET value = excluded.value, updated_at = datetime('now')
   `).run(key, value);
 }
 
-// ── GET /settings ────────────────────────────────────────────────────────────
-router.get('/', requireAuth, ADMIN_ONLY, (req, res) => {
+// ΓöÇΓöÇ GET /settings ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.get('/', requireAuth, ADMIN_ONLY, async (req, res) => {
   const siteSettings = loadSettings();
   const activeTab = req.query.tab || 'payment';
   res.render('settings/index', {
@@ -65,7 +64,7 @@ router.get('/', requireAuth, ADMIN_ONLY, (req, res) => {
   });
 });
 
-// ── POST /settings/payment ────────────────────────────────────────────────────
+// ΓöÇΓöÇ POST /settings/payment ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Update payment account details. Handles optional QR image upload.
 router.post('/payment',
   requireAuth, ADMIN_ONLY,
@@ -73,14 +72,14 @@ router.post('/payment',
     { name: 'gcash_qr_image', maxCount: 1 },
     { name: 'maya_qr_image', maxCount: 1 },
   ]),
-  (req, res) => {
+  async (req, res) => {
     const {
       gcash_number, gcash_name,
       maya_number,  maya_name,
       bank_bdo,     bank_bpi,  bank_name,
     } = req.body;
 
-    // ── Validate mobile-number formats before saving ─────────────────────────
+    // ΓöÇΓöÇ Validate mobile-number formats before saving ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const gcash = (gcash_number || '').trim();
     const maya  = (maya_number  || '').trim();
     const gcashQrFile = req.files?.gcash_qr_image?.[0];
@@ -105,23 +104,23 @@ router.post('/payment',
       saveSetting('maya_number',  (maya_number  || '').trim());
       saveSetting('maya_name',    (maya_name    || '').trim());
       saveSetting('bank_bdo',     (bank_bdo     || '').trim());
-      saveSetting('bank_bpi',     (bank_bpi     || '').trim());
+      saveSetting('bank_bpi',    (bank_bpi     || '').trim());
       saveSetting('bank_name',    (bank_name    || '').trim());
 
       // Replace only the QR images included in this request.
-      [
+      for (const { file, key } of [
         { file: gcashQrFile, key: 'gcash_qr_path' },
         { file: mayaQrFile, key: 'maya_qr_path' },
-      ].forEach(({ file, key }) => {
+      ]) {
         if (file) {
-          const oldQR = await db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value || '';
+          const oldQR = db.prepare('SELECT value FROM settings WHERE key = ?').get(key)?.value || '';
           if (oldQR) {
             const oldAbs = path.join(process.cwd(), oldQR.replace(/^\//, ''));
             if (fs.existsSync(oldAbs)) fs.unlink(oldAbs, () => {});
           }
           saveSetting(key, '/uploads/settings/' + file.filename);
         }
-      });
+      }
     })();
 
     req.audit && req.audit('update', 'settings', null, null, { group: 'payment' });
@@ -130,9 +129,9 @@ router.post('/payment',
   }
 );
 
-// ── POST /settings/payment/remove-qr ─────────────────────────────────────────
+// ΓöÇΓöÇ POST /settings/payment/remove-qr ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Remove the GCash QR image
-router.post('/payment/remove-qr', requireAuth, ADMIN_ONLY, (req, res) => {
+router.post('/payment/remove-qr', requireAuth, ADMIN_ONLY, async (req, res) => {
   const oldQR = await db.prepare("SELECT value FROM settings WHERE key = 'gcash_qr_path'").get()?.value || '';
   if (oldQR) {
     const oldAbs = path.join(process.cwd(), oldQR.replace(/^\//, ''));
@@ -143,7 +142,7 @@ router.post('/payment/remove-qr', requireAuth, ADMIN_ONLY, (req, res) => {
   res.redirect('/settings?tab=payment');
 });
 
-router.post('/payment/remove-maya-qr', requireAuth, ADMIN_ONLY, (req, res) => {
+router.post('/payment/remove-maya-qr', requireAuth, ADMIN_ONLY, async (req, res) => {
   const oldQR = await db.prepare("SELECT value FROM settings WHERE key = 'maya_qr_path'").get()?.value || '';
   if (oldQR) {
     const oldAbs = path.join(process.cwd(), oldQR.replace(/^\//, ''));
@@ -154,8 +153,8 @@ router.post('/payment/remove-maya-qr', requireAuth, ADMIN_ONLY, (req, res) => {
   res.redirect('/settings?tab=payment');
 });
 
-// ── POST /settings/general ────────────────────────────────────────────────────
-router.post('/general', requireAuth, ADMIN_ONLY, (req, res) => {
+// ΓöÇΓöÇ POST /settings/general ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.post('/general', requireAuth, ADMIN_ONLY, async (req, res) => {
   const { resort_name, resort_tagline, resort_address, resort_phone, resort_email } = req.body;
   db.transaction(() => {
     saveSetting('resort_name',    (resort_name    || '').trim());
@@ -168,8 +167,8 @@ router.post('/general', requireAuth, ADMIN_ONLY, (req, res) => {
   res.redirect('/settings?tab=general');
 });
 
-// ── POST /settings/booking ────────────────────────────────────────────────────
-router.post('/booking', requireAuth, ADMIN_ONLY, (req, res) => {
+// ΓöÇΓöÇ POST /settings/booking ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.post('/booking', requireAuth, ADMIN_ONLY, async (req, res) => {
   const { check_in_time, check_out_time, downpayment_percent, cancellation_policy } = req.body;
   db.transaction(() => {
     saveSetting('check_in_time',       (check_in_time       || '').trim());

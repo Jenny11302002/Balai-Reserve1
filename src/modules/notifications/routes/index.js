@@ -10,7 +10,7 @@ const { requireAuth } = require('../../../middleware/auth');
 const router = express.Router();
 
 // GET /notifications
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { page = 1 } = req.query;
   const limit  = 20;
   const offset = (parseInt(page) - 1) * limit;
@@ -27,13 +27,14 @@ router.get('/', requireAuth, (req, res) => {
     title: 'Notifications – Balai-Reserve',
     layout: 'layouts/main',
     notifications,
+    filters: {},
     pagination: { total, page: parseInt(page), limit, totalPages: Math.ceil(total / limit) },
   });
 });
 
 // GET /notifications/feed — JSON endpoint for real-time polling
 // Returns unread count + most recent notifications for the logged-in user.
-router.get('/feed', requireAuth, (req, res) => {
+router.get('/feed', requireAuth, async (req, res) => {
   try {
     const uid = req.session.user.id;
     const unread = await db.prepare(
@@ -55,19 +56,19 @@ router.get('/feed', requireAuth, (req, res) => {
 });
 
 // POST /notifications/read-all — mark every notification read (from the bell)
-router.post('/read-all', requireAuth, (req, res) => {
+router.post('/read-all', requireAuth, async (req, res) => {
   await db.prepare(`UPDATE notifications SET is_read=1 WHERE user_id=?`).run(req.session.user.id);
   res.json({ success: true });
 });
 
 // POST /notifications/:id/read
-router.post('/:id/read', requireAuth, (req, res) => {
+router.post('/:id/read', requireAuth, async (req, res) => {
   await db.prepare(`UPDATE notifications SET is_read=1 WHERE id=? AND user_id=?`).run(req.params.id, req.session.user.id);
   res.json({ success: true });
 });
 
 // DELETE /notifications/clear
-router.post('/clear', requireAuth, (req, res) => {
+router.post('/clear', requireAuth, async (req, res) => {
   await db.prepare(`DELETE FROM notifications WHERE user_id=? AND is_read=1`).run(req.session.user.id);
   req.session.flash = { success: 'Read notifications cleared.' };
   res.redirect('/notifications');

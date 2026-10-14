@@ -24,13 +24,12 @@ const { generateReservationQR }    = require('../../../utils/qrGenerator');
 const { notifyAllAdmins, notifyUser } = require('../../../utils/notifications');
 const { validateGcashScreenshot }     = require('../../../utils/gcashValidator');
 const { calculateCottageTotal, validateCottageTimeRange } = require('../../../utils/cottagePricing');
-const { ensureDir } = require('../../../utils/ensureDir');
 
 const router = express.Router();
 
-// ── Multer: payment proof images ────────────────────────────────────────────
+// ΓöÇΓöÇ Multer: payment proof images ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const PROOF_DIR = path.join(process.cwd(), 'uploads', 'payment_proofs');
-ensureDir(PROOF_DIR);
+if (!fs.existsSync(PROOF_DIR)) fs.mkdirSync(PROOF_DIR, { recursive: true });
 
 const proofStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, PROOF_DIR),
@@ -52,17 +51,17 @@ const proofUpload = multer({
   },
 });
 
-// ── Auth helpers ────────────────────────────────────────────────────────────
+// ΓöÇΓöÇ Auth helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 const STAFF_ROLES = ['admin','staff'];
 
-function requireCustomerOrGuest(req, res, next) {
+async function requireCustomerOrGuest(req, res, next) {
   if (req.session?.user && STAFF_ROLES.includes(req.session.user.role)) {
     return res.redirect('/dashboard');
   }
   next();
 }
 
-function requireCustomer(req, res, next) {
+async function requireCustomer(req, res, next) {
   if (!req.session?.user) {
     req.session.flash    = { error: 'Please sign in to continue.' };
     req.session.returnTo = req.originalUrl;
@@ -74,7 +73,7 @@ function requireCustomer(req, res, next) {
   next();
 }
 
-// ── Shared portal locals ────────────────────────────────────────────────────
+// ΓöÇΓöÇ Shared portal locals ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 router.use(async (req, res, next) => {
   res.locals.portalLayout = 'layouts/portal';
 
@@ -98,12 +97,14 @@ router.use(async (req, res, next) => {
       gcash_qr_path: pm.gcash_qr_path || '',
       maya_qr_path: pm.maya_qr_path || '',
     };
-  } catch { res.locals.paymentInfo = {}; }
+  } catch (error) {
+    return next(error);
+  }
 
   next();
 });
 
-// ── Helper: server-side price calculation ───────────────────────────────────
+// ΓöÇΓöÇ Helper: server-side price calculation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 /**
  * Calculate the correct total for a booking entirely on the server.
  * Never trust the client-submitted total_amount.
@@ -120,7 +121,7 @@ router.use(async (req, res, next) => {
  *                                         server validates each against the package's
  *                                         actual inclusions to prevent price tampering
  */
-function calculateServerTotal(reservation_type, roomId, venueId, pkgId, ciDate, coDate, startTime, endTime, selectedInclusions = []) {
+async function calculateServerTotal(reservation_type, roomId, venueId, pkgId, ciDate, coDate, startTime, endTime, selectedInclusions = []) {
   let total = 0;
 
   if (reservation_type === 'room' && roomId) {
@@ -158,7 +159,7 @@ function calculateServerTotal(reservation_type, roomId, venueId, pkgId, ciDate, 
         let allInclusions = [];
         try { allInclusions = JSON.parse(pkg.inclusions || '[]'); } catch { allInclusions = []; }
 
-        // Build a trusted map: inclusion name → price (only optional add-ons with price > 0)
+        // Build a trusted map: inclusion name ΓåÆ price (only optional add-ons with price > 0)
         const addonMap = new Map();
         for (const inc of allInclusions) {
           if (inc.is_optional && inc.price > 0) {
@@ -180,8 +181,8 @@ function calculateServerTotal(reservation_type, roomId, venueId, pkgId, ciDate, 
   return total;
 }
 
-// ── GET /portal ─────────────────────────────────────────────────────────────
-router.get('/', requireCustomerOrGuest, (req, res) => {
+// ΓöÇΓöÇ GET /portal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.get('/', requireCustomerOrGuest, async (req, res) => {
   const availableRooms  = await db.prepare('SELECT COUNT(*) AS c FROM rooms  WHERE status=\'available\' AND is_active=1').get().c;
   const availableVenues = await db.prepare('SELECT COUNT(*) AS c FROM venues WHERE status=\'available\' AND is_active=1').get().c;
   const availableCottages = await db.prepare('SELECT COUNT(*) AS c FROM cottages WHERE status=\'available\' AND is_active=1').get().c;
@@ -217,8 +218,8 @@ router.get('/', requireCustomerOrGuest, (req, res) => {
   });
 });
 
-// ── GET /portal/rooms ────────────────────────────────────────────────────────
-router.get('/rooms', requireCustomerOrGuest, (req, res) => {
+// ΓöÇΓöÇ GET /portal/rooms ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.get('/rooms', requireCustomerOrGuest, async (req, res) => {
   const { checkin = '', checkout = '', guests = '', type = '', sort = 'price_asc' } = req.query;
   // Show every active room; availability is reflected per-card (booked rooms
   // are shown as "Unavailable" instead of being hidden).
@@ -265,8 +266,8 @@ router.get('/rooms', requireCustomerOrGuest, (req, res) => {
   });
 });
 
-// ── GET /portal/venues ───────────────────────────────────────────────────────
-router.get('/venues', requireCustomerOrGuest, (req, res) => {
+// ΓöÇΓöÇ GET /portal/venues ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.get('/venues', requireCustomerOrGuest, async (req, res) => {
   const { date = '', guests = '', type = '', sort = 'price_asc' } = req.query;
   // Show all active venues; booked ones render as "Unavailable".
   let   where  = 'WHERE is_active=1';
@@ -304,8 +305,8 @@ router.get('/venues', requireCustomerOrGuest, (req, res) => {
   });
 });
 
-// ── GET /portal/cottages ─────────────────────────────────────────────────────
-router.get('/cottages', requireCustomerOrGuest, (req, res) => {
+// ΓöÇΓöÇ GET /portal/cottages ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.get('/cottages', requireCustomerOrGuest, async (req, res) => {
   const { date = '', guests = '', sort = 'price_asc', max_price = '' } = req.query;
   // Show all active cottages; booked ones render as "Unavailable".
   let   where  = 'WHERE is_active=1';
@@ -332,8 +333,8 @@ router.get('/cottages', requireCustomerOrGuest, (req, res) => {
   });
 });
 
-// ── GET /portal/book ─────────────────────────────────────────────────────────
-router.get('/book', requireCustomer, (req, res) => {
+// ΓöÇΓöÇ GET /portal/book ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.get('/book', requireCustomer, async (req, res) => {
   const { type = '', item_id = '', package_id = '', checkin = '', checkout = '', date = '' } = req.query;
 
   const rooms    = await db.prepare('SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.status=\'available\' AND r.is_active=1 ORDER BY r.price').all();
@@ -405,7 +406,7 @@ router.get('/book', requireCustomer, (req, res) => {
   });
 });
 
-// ── POST /portal/book ────────────────────────────────────────────────────────
+// ΓöÇΓöÇ POST /portal/book ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 router.post('/book',
   requireCustomer,
   [
@@ -521,12 +522,12 @@ router.post('/book',
     const notes      = (special_requests || '').trim();
     const pmMethod   = (payment_method || 'cash').trim();
 
-    // ── FIX 2: Always calculate price server-side ──────────────────────────
+    // ΓöÇΓöÇ FIX 2: Always calculate price server-side ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     let itemId = null;
     if (['room','cottage'].includes(reservation_type))   itemId = roomId;
     if (['venue','event'].includes(reservation_type))    itemId = venueId;
 
-    const totalAmt = calculateServerTotal(reservation_type, roomId, venueId, pkgId, ciDate, coDate, stTime, enTime, selectedInclusions);
+    const totalAmt = await calculateServerTotal(reservation_type, roomId, venueId, pkgId, ciDate, coDate, stTime, enTime, selectedInclusions);
 
     // Guard: if price is still 0 after server calculation, the item doesn't exist
     if (totalAmt <= 0) {
@@ -537,7 +538,7 @@ router.post('/book',
     const dpAmt  = Math.ceil(totalAmt * 0.5);
     const pmLabel = { gcash:'GCash', bank_transfer:'Bank Transfer (BDO/BPI)', maya:'Maya', cash:'Cash (Walk-in / Front Desk)' }[pmMethod] || pmMethod;
 
-    // ── Find or create customer record ────────────────────────────────────
+    // ΓöÇΓöÇ Find or create customer record ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     let customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
     if (!customer) {
       const code = 'CUS-' + String(Date.now()).slice(-6);
@@ -551,7 +552,7 @@ router.post('/book',
       return res.redirect('/portal/book');
     }
 
-    // ── Double-booking guard (room only) ──────────────────────────────────
+    // ΓöÇΓöÇ Double-booking guard (room only) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     if (reservation_type === 'room' && roomId && ciDate && coDate) {
       const linkedItems = await db.prepare('SELECT reservation_id FROM reservation_items WHERE item_type = ? AND item_id = ?').all('room', roomId);
       for (const li of linkedItems) {
@@ -569,7 +570,7 @@ router.post('/book',
     const bookingRef = generateBookingRef();
 
     const resId = db.transaction(() => {
-      const newId = await db.prepare(
+      const newId = db.prepare(
         'INSERT INTO reservations (booking_ref, customer_id, reservation_type, check_in_date, check_out_date, event_date, start_time, end_time, num_guests, special_requests, total_amount, downpayment_req, status, payment_status, source, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).run(
         bookingRef, customer.id, reservation_type,
@@ -583,24 +584,24 @@ router.post('/book',
       // Reservation item — and mark the booked resource as reserved so it
       // stops showing as available while this booking is active.
       if (reservation_type === 'room' && roomId) {
-        const row = await db.prepare('SELECT name, price FROM rooms WHERE id = ?').get(roomId);
-        await db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'room', roomId, row?.name||'', 1, row?.price||0, totalAmt);
-        await db.prepare("UPDATE rooms SET status='reserved', updated_at=NOW() WHERE id=?").run(roomId);
+        const row = db.prepare('SELECT name, price FROM rooms WHERE id = ?').get(roomId);
+        db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'room', roomId, row?.name||'', 1, row?.price||0, totalAmt);
+        db.prepare("UPDATE rooms SET status='reserved', updated_at=datetime('now') WHERE id=?").run(roomId);
       } else if (reservation_type === 'venue' && venueId) {
-        const row = await db.prepare('SELECT name, price FROM venues WHERE id = ?').get(venueId);
-        await db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'venue', venueId, row?.name||'', 1, row?.price||0, totalAmt);
-        await db.prepare("UPDATE venues SET status='reserved', updated_at=NOW() WHERE id=?").run(venueId);
+        const row = db.prepare('SELECT name, price FROM venues WHERE id = ?').get(venueId);
+        db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'venue', venueId, row?.name||'', 1, row?.price||0, totalAmt);
+        db.prepare("UPDATE venues SET status='reserved', updated_at=datetime('now') WHERE id=?").run(venueId);
       } else if (reservation_type === 'cottage' && roomId) {
-        const row = await db.prepare('SELECT name, price FROM cottages WHERE id = ?').get(roomId);
-        await db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'cottage', roomId, row?.name||'', 1, row?.price||0, totalAmt);
-        await db.prepare("UPDATE cottages SET status='reserved', updated_at=NOW() WHERE id=?").run(roomId);
+        const row = db.prepare('SELECT name, price FROM cottages WHERE id = ?').get(roomId);
+        db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'cottage', roomId, row?.name||'', 1, row?.price||0, totalAmt);
+        db.prepare("UPDATE cottages SET status='reserved', updated_at=datetime('now') WHERE id=?").run(roomId);
       }
 
       if (pkgId) {
-        const pkg = await db.prepare('SELECT name, price, inclusions FROM event_packages WHERE id = ?').get(pkgId);
+        const pkg = db.prepare('SELECT name, price, inclusions FROM event_packages WHERE id = ?').get(pkgId);
         if (pkg) {
           // Insert the base package row
-          await db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+          db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
             newId, 'event_package', pkgId, pkg.name, 1, pkg.price, pkg.price
           );
 
@@ -619,7 +620,7 @@ router.post('/book',
               const name = (sel.name || '').trim();
               if (addonMap.has(name)) {
                 const addonPrice = addonMap.get(name);
-                await db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
+                db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price, notes) VALUES (?, ?, ?, ?, ?, ?, ?, ?)').run(
                   newId, 'inclusion', pkgId, name, 1, addonPrice, addonPrice, 'Event package add-on'
                 );
               }
@@ -629,13 +630,13 @@ router.post('/book',
       }
 
       // Status history
-      await db.prepare("INSERT INTO reservation_status_history (reservation_id, from_status, to_status) VALUES (?, NULL, 'awaiting_payment')").run(newId);
+      db.prepare("INSERT INTO reservation_status_history (reservation_id, from_status, to_status) VALUES (?, NULL, 'awaiting_payment')").run(newId);
 
       // Guest record
-      await db.prepare("INSERT INTO guests (reservation_id, customer_id, first_name, last_name, email, num_guests, status) VALUES (?, ?, ?, ?, ?, ?, 'expected')").run(newId, customer.id, user.firstName, user.lastName, user.email||'', guestCount);
+      db.prepare("INSERT INTO guests (reservation_id, customer_id, first_name, last_name, email, num_guests, status) VALUES (?, ?, ?, ?, ?, ?, 'expected')").run(newId, customer.id, user.firstName, user.lastName, user.email||'', guestCount);
 
       // CRM activity
-      await db.prepare("INSERT INTO crm_activities (customer_id, activity_type, subject, description, status) VALUES (?, 'inquiry', ?, ?, 'completed')").run(
+      db.prepare("INSERT INTO crm_activities (customer_id, activity_type, subject, description, status) VALUES (?, 'inquiry', ?, ?, 'completed')").run(
         customer.id,
         'Online booking submitted',
         'Booking ' + bookingRef + ' — ' + reservation_type + ' — ₱' + totalAmt.toLocaleString() + ' total. Downpayment ₱' + dpAmt.toLocaleString() + ' via ' + pmLabel
@@ -671,7 +672,7 @@ router.post('/book',
   }
 );
 
-// ── POST /portal/my-reservations/:id/submit-payment ─────────────────────────
+// ΓöÇΓöÇ POST /portal/my-reservations/:id/submit-payment ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // FIX 5: multer proof upload + prevent duplicate pending submissions +
 //         update payment_status on reservation immediately
 router.post(
@@ -710,7 +711,7 @@ router.post(
       return res.redirect('/portal/my-reservations/' + req.params.id);
     }
 
-    // ── GCash screenshot validation ───────────────────────────────────────
+    // ΓöÇΓöÇ GCash screenshot validation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     // For the GCash method a proof screenshot is REQUIRED and must actually
     // look like a genuine GCash receipt (verified via OCR). Anything else is
     // rejected and the uploaded file is deleted.
@@ -754,7 +755,7 @@ router.post(
       }
     }
 
-    // ── FIX 5a: Prevent duplicate unverified submissions ──────────────────
+    // ΓöÇΓöÇ FIX 5a: Prevent duplicate unverified submissions ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const existingPending = await db.prepare(
       "SELECT id FROM payments WHERE reservation_id = ? AND submitted_by = 'customer' AND status = 'received'"
     ).get(reservation.id);
@@ -786,13 +787,13 @@ router.post(
     try {
       db.transaction(() => {
         // Insert the payment as 'received' — staff will change to 'verified'
-        await db.prepare(
-          'INSERT INTO payments (reservation_id, reference_number, amount, payment_method, payment_date, payment_type, status, notes, proof_image, submitted_by) VALUES (?, ?, ?, ?, CAST(\'now\' AS DATE), ?, \'received\', ?, ?, \'customer\')'
+        db.prepare(
+          'INSERT INTO payments (reservation_id, reference_number, amount, payment_method, payment_date, payment_type, status, notes, proof_image, submitted_by) VALUES (?, ?, ?, ?, DATE(\'now\'), ?, \'received\', ?, ?, \'customer\')'
         ).run(reservation.id, refNum, amount, pmMethod, payType, noteText, proofPath);
 
-        // ── FIX 5b: Immediately update payment_status so the customer sees
+        // ΓöÇΓöÇ FIX 5b: Immediately update payment_status so the customer sees
         //           "Partially Paid" instead of "Unpaid" after submitting proof
-        const totalPaid = await db.prepare(
+        const totalPaid = db.prepare(
           "SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE reservation_id = ? AND status = 'received'"
         ).get(reservation.id).t;
 
@@ -800,7 +801,7 @@ router.post(
         if (totalPaid >= reservation.total_amount && reservation.total_amount > 0) {
           newPayStatus = 'fully_paid';
         }
-        await db.prepare("UPDATE reservations SET payment_status = ?, updated_at = NOW() WHERE id = ?").run(newPayStatus, reservation.id);
+        db.prepare("UPDATE reservations SET payment_status = ?, updated_at = datetime('now') WHERE id = ?").run(newPayStatus, reservation.id);
       })();
     } catch (error) {
       if (error.code !== 'SQLITE_CONSTRAINT_UNIQUE') throw error;
@@ -835,8 +836,8 @@ router.post(
   }
 );
 
-// ── GET /portal/profile — customer profile settings ────────────────────────
-router.get('/profile', requireCustomer, (req, res) => {
+// ΓöÇΓöÇ GET /portal/profile — customer profile settings ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.get('/profile', requireCustomer, async (req, res) => {
   const user     = req.session.user;
   const account  = await db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   let   customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
@@ -859,7 +860,7 @@ router.get('/profile', requireCustomer, (req, res) => {
   });
 });
 
-// ── POST /portal/profile — update name / phone / address / preferred contact ─
+// ΓöÇΓöÇ POST /portal/profile — update name / phone / address / preferred contact ΓöÇ
 router.post('/profile',
   requireCustomer,
   [
@@ -869,7 +870,7 @@ router.post('/profile',
     body('address').optional({ checkFalsy: true }).trim(),
     body('preferred_contact').optional({ checkFalsy: true }).isIn(['email','phone','sms']),
   ],
-  (req, res) => {
+  async (req, res) => {
     const user    = req.session.user;
     const account = await db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
     const customer= await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
@@ -887,12 +888,12 @@ router.post('/profile',
 
     db.transaction(() => {
       // Update the users row (auth identity + navbar name)
-      await db.prepare(`UPDATE users SET first_name=?, last_name=?, phone=?, updated_at=NOW() WHERE id=?`)
+      db.prepare(`UPDATE users SET first_name=?, last_name=?, phone=?, updated_at=datetime('now') WHERE id=?`)
         .run(first_name, last_name, phone || '', user.id);
 
       // Update the linked customer profile row
       if (customer) {
-        await db.prepare(`UPDATE customers SET first_name=?, last_name=?, phone=?, address=?, preferred_contact=?, updated_at=NOW() WHERE id=?`)
+        db.prepare(`UPDATE customers SET first_name=?, last_name=?, phone=?, address=?, preferred_contact=?, updated_at=datetime('now') WHERE id=?`)
           .run(first_name, last_name, phone || '', address || '', preferred_contact || 'email', customer.id);
       }
     })();
@@ -906,7 +907,7 @@ router.post('/profile',
   }
 );
 
-// ── POST /portal/profile/password — change password ─────────────────────────
+// ΓöÇΓöÇ POST /portal/profile/password — change password ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 router.post('/profile/password',
   requireCustomer,
   [
@@ -917,20 +918,15 @@ router.post('/profile/password',
       return true;
     }),
   ],
-  (req, res) => {
+  async (req, res) => {
     const user     = req.session.user;
     const account  = await db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
     const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
     const errors   = validationResult(req);
     const allErrors = errors.array();
 
-    // Google-only accounts have no password to change
-    if (account.auth_provider === 'google' && !account.password_hash) {
-      allErrors.unshift({ msg: 'Your account uses Google Sign-In and has no password to change.' });
-    } else {
-      const currentOk = bcrypt.compareSync(req.body.current_password || '', account.password_hash || '');
-      if (!currentOk) allErrors.unshift({ msg: 'Current password is incorrect.' });
-    }
+    const currentOk = bcrypt.compareSync(req.body.current_password || '', account.password_hash || '');
+    if (!currentOk) allErrors.unshift({ msg: 'Current password is incorrect.' });
 
     if (allErrors.length > 0) {
       return res.render('portal/profile', {
@@ -941,15 +937,15 @@ router.post('/profile/password',
     }
 
     const hash = bcrypt.hashSync(req.body.new_password, 12);
-    await db.prepare(`UPDATE users SET password_hash=?, updated_at=NOW() WHERE id=?`).run(hash, user.id);
+    await db.prepare(`UPDATE users SET password_hash=?, updated_at=datetime('now') WHERE id=?`).run(hash, user.id);
 
     req.session.flash = { success: 'Your password has been changed.' };
     res.redirect('/portal/profile');
   }
 );
 
-// ── GET /portal/notifications ───────────────────────────────────────────────
-router.get('/notifications', requireCustomer, (req, res) => {
+// ΓöÇΓöÇ GET /portal/notifications ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.get('/notifications', requireCustomer, async (req, res) => {
   const uid = req.session.user.id;
   const notifications = await db.prepare(
     `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100`
@@ -965,14 +961,14 @@ router.get('/notifications', requireCustomer, (req, res) => {
   });
 });
 
-// ── POST /portal/notifications/clear — delete read notifications ────────────
-router.post('/notifications/clear', requireCustomer, (req, res) => {
+// ΓöÇΓöÇ POST /portal/notifications/clear — delete read notifications ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.post('/notifications/clear', requireCustomer, async (req, res) => {
   await db.prepare(`DELETE FROM notifications WHERE user_id = ? AND is_read = 1`).run(req.session.user.id);
   req.session.flash = { success: 'Notifications cleared.' };
   res.redirect('/portal/notifications');
 });
 
-// ── GET /portal/payment-proof/:paymentId ─────────────────────────────────────
+// ΓöÇΓöÇ GET /portal/payment-proof/:paymentId ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Access-controlled delivery of a GCash payment-proof image. Only the owning
 // customer OR staff/admin may view it. Proof files are NOT served publicly.
 router.get('/payment-proof/:paymentId', async (req, res) => {
@@ -1013,8 +1009,8 @@ router.get('/payment-proof/:paymentId', async (req, res) => {
   return res.sendFile(absPath);
 });
 
-// ── GET /portal/my-reservations ─────────────────────────────────────────────
-router.get('/my-reservations', requireCustomer, (req, res) => {
+// ΓöÇΓöÇ GET /portal/my-reservations ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.get('/my-reservations', requireCustomer, async (req, res) => {
   const user     = req.session.user;
   const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
 
@@ -1030,8 +1026,8 @@ router.get('/my-reservations', requireCustomer, (req, res) => {
   });
 });
 
-// ── GET /portal/my-reservations/:id ─────────────────────────────────────────
-router.get('/my-reservations/:id', requireCustomer, (req, res) => {
+// ΓöÇΓöÇ GET /portal/my-reservations/:id ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.get('/my-reservations/:id', requireCustomer, async (req, res) => {
   const user     = req.session.user;
   const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
 
@@ -1048,14 +1044,14 @@ router.get('/my-reservations/:id', requireCustomer, (req, res) => {
 
   const items = await db.prepare('SELECT * FROM reservation_items WHERE reservation_id = ?').all(reservation.id);
 
-  // ── FIX 8: Only count non-refunded payments in balance calculation ────────
+  // ΓöÇΓöÇ FIX 8: Only count non-refunded payments in balance calculation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const payments = await db.prepare(
     "SELECT * FROM payments WHERE reservation_id = ? AND status != 'refunded' ORDER BY payment_date ASC"
   ).all(reservation.id);
 
   const amountPaid   = payments.reduce((s, p) => s + (p.amount || 0), 0);
   const totalAmount  = reservation.total_amount || 0;
-  // ── FIX 3: balance correctly reflects whether anything was actually paid ──
+  // ΓöÇΓöÇ FIX 3: balance correctly reflects whether anything was actually paid ΓöÇΓöÇ
   const balance      = totalAmount - amountPaid;
   const isFullyPaid  = totalAmount > 0 && balance <= 0;
   const hasAnyPayment= amountPaid > 0;
@@ -1092,8 +1088,8 @@ router.get('/my-reservations/:id', requireCustomer, (req, res) => {
   });
 });
 
-// ── GET /portal/feedback/:reservationId ─────────────────────────────────────
-router.get('/feedback/:reservationId', requireCustomer, (req, res) => {
+// ΓöÇΓöÇ GET /portal/feedback/:reservationId ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.get('/feedback/:reservationId', requireCustomer, async (req, res) => {
   const user     = req.session.user;
   const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
   if (!customer) return res.redirect('/portal');
@@ -1114,11 +1110,11 @@ router.get('/feedback/:reservationId', requireCustomer, (req, res) => {
   });
 });
 
-// ── POST /portal/my-reservations/:id/cancel ──────────────────────────────────
+// ΓöÇΓöÇ POST /portal/my-reservations/:id/cancel ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Guests can cancel their own booking while it is still pending or awaiting payment.
 // If payment was already submitted it is NON-REFUNDABLE — booking is cancelled but
 // payment records are kept; staff are notified.
-router.post('/my-reservations/:id/cancel', requireCustomer, (req, res) => {
+router.post('/my-reservations/:id/cancel', requireCustomer, async (req, res) => {
   const user     = req.session.user;
   const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
   if (!customer) {
@@ -1149,19 +1145,19 @@ router.post('/my-reservations/:id/cancel', requireCustomer, (req, res) => {
 
   db.transaction(() => {
     // Cancel the reservation
-    await db.prepare(`UPDATE reservations SET status='cancelled', updated_at=NOW() WHERE id=?`).run(reservation.id);
-    await db.prepare(`INSERT INTO reservation_status_history (reservation_id, from_status, to_status, notes) VALUES (?,?,?,'Cancelled by guest via portal')`).run(reservation.id, reservation.status, 'cancelled');
+    db.prepare(`UPDATE reservations SET status='cancelled', updated_at=datetime('now') WHERE id=?`).run(reservation.id);
+    db.prepare(`INSERT INTO reservation_status_history (reservation_id, from_status, to_status, notes) VALUES (?,?,?,'Cancelled by guest via portal')`).run(reservation.id, reservation.status, 'cancelled');
 
     // Free up any reserved items so they show as available again immediately
-    const items = await db.prepare(`SELECT * FROM reservation_items WHERE reservation_id=?`).all(reservation.id);
+    const items = db.prepare(`SELECT * FROM reservation_items WHERE reservation_id=?`).all(reservation.id);
     for (const item of items) {
-      if (item.item_type === 'room')    await db.prepare(`UPDATE rooms SET status='available', updated_at=NOW() WHERE id=?`).run(item.item_id);
-      if (item.item_type === 'venue')   await db.prepare(`UPDATE venues SET status='available', updated_at=NOW() WHERE id=?`).run(item.item_id);
-      if (item.item_type === 'cottage') await db.prepare(`UPDATE cottages SET status='available', updated_at=NOW() WHERE id=?`).run(item.item_id);
+      if (item.item_type === 'room')    db.prepare(`UPDATE rooms SET status='available', updated_at=datetime('now') WHERE id=?`).run(item.item_id);
+      if (item.item_type === 'venue')   db.prepare(`UPDATE venues SET status='available', updated_at=datetime('now') WHERE id=?`).run(item.item_id);
+      if (item.item_type === 'cottage') db.prepare(`UPDATE cottages SET status='available', updated_at=datetime('now') WHERE id=?`).run(item.item_id);
     }
 
     // Update guest record if present
-    await db.prepare(`UPDATE guests SET status='no_show', updated_at=NOW() WHERE reservation_id=?`).run(reservation.id);
+    db.prepare(`UPDATE guests SET status='no_show', updated_at=datetime('now') WHERE reservation_id=?`).run(reservation.id);
   })();
 
   // Notify staff of the cancellation
@@ -1191,9 +1187,9 @@ router.post('/my-reservations/:id/cancel', requireCustomer, (req, res) => {
   res.redirect('/portal/my-reservations');
 });
 
-// ── POST /portal/my-reservations/:id/request-refund ───────────────────────────
+// ΓöÇΓöÇ POST /portal/my-reservations/:id/request-refund ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Customer submits a refund request. It stays 'pending' until an admin reviews it.
-router.post('/my-reservations/:id/request-refund', requireCustomer, (req, res) => {
+router.post('/my-reservations/:id/request-refund', requireCustomer, async (req, res) => {
   const user     = req.session.user;
   const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
   if (!customer) { req.session.flash = { error: 'Session error. Please log in again.' }; return res.redirect('/auth/login'); }
@@ -1252,14 +1248,14 @@ router.post('/my-reservations/:id/request-refund', requireCustomer, (req, res) =
   res.redirect('/portal/my-reservations/' + reservation.id);
 });
 
-// ── GET /portal/feedback/:reservationId ─────────────────────────────────────
+// ΓöÇΓöÇ GET /portal/feedback/:reservationId ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 router.post('/feedback/:reservationId',
   requireCustomer,
   [
     body('rating').isInt({ min: 1, max: 5 }).withMessage('Please select a rating from 1 to 5.'),
     body('comments').trim().notEmpty().withMessage('Please write a short comment.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const user     = req.session.user;
     const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
     const reservation = await db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.reservationId, customer?.id);
@@ -1281,15 +1277,15 @@ router.post('/feedback/:reservationId',
   }
 );
 
-// ── GET /portal/inquire ──────────────────────────────────────────────────────
-router.get('/inquire', requireCustomerOrGuest, (req, res) => {
+// ΓöÇΓöÇ GET /portal/inquire ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+router.get('/inquire', requireCustomerOrGuest, async (req, res) => {
   res.render('portal/inquire', {
     title: 'Contact Us – Balai-Reserve', layout: 'layouts/portal',
     errors: [], old: {},
   });
 });
 
-// ── POST /portal/inquire ─────────────────────────────────────────────────────
+// ΓöÇΓöÇ POST /portal/inquire ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 router.post('/inquire',
   [
     body('name').trim().notEmpty().withMessage('Name is required.'),
@@ -1297,7 +1293,7 @@ router.post('/inquire',
     body('message').trim().notEmpty().withMessage('Message is required.'),
     body('email').optional({ checkFalsy: true }).isEmail().withMessage('Enter a valid email.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       return res.render('portal/inquire', {
@@ -1318,23 +1314,23 @@ router.post('/inquire',
   }
 );
 
-// ── GET /portal/calendar ─────────────────────────────────────────────────────
+// ΓöÇΓöÇ GET /portal/calendar ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Interactive availability calendar. Shows booked date ranges (no customer
 // details) so guests can pick an open date; clicking a date starts a booking.
-router.get('/calendar', requireCustomerOrGuest, (req, res) => {
+router.get('/calendar', requireCustomerOrGuest, async (req, res) => {
   res.render('portal/calendar', {
     title: 'Availability Calendar – Balai-Reserve',
     layout: 'layouts/portal',
   });
 });
 
-// ── GET /portal/calendar/feed ────────────────────────────────────────────────
+// ΓöÇΓöÇ GET /portal/calendar/feed ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // JSON feed of booked ranges for FullCalendar. Returns anonymised "Booked"
 // blocks (rooms/cottages as date spans, venues/events as single days).
-router.get('/calendar/feed', requireCustomerOrGuest, (req, res) => {
+router.get('/calendar/feed', requireCustomerOrGuest, async (req, res) => {
   const ACTIVE = "status NOT IN ('cancelled','rejected','completed','no_show')";
 
-  // Room & cottage bookings → multi-day all-day spans.
+  // Room & cottage bookings ΓåÆ multi-day all-day spans.
   const stays = await db.prepare(`
     SELECT r.reservation_type, r.check_in_date, r.check_out_date, ri.item_name
     FROM reservations r
@@ -1344,7 +1340,7 @@ router.get('/calendar/feed', requireCustomerOrGuest, (req, res) => {
       AND ${ACTIVE}
   `).all();
 
-  // Venue / event bookings → single-day markers.
+  // Venue / event bookings ΓåÆ single-day markers.
   const venueEvents = await db.prepare(`
     SELECT r.reservation_type, r.event_date, ri.item_name
     FROM reservations r
@@ -1381,9 +1377,9 @@ router.get('/calendar/feed', requireCustomerOrGuest, (req, res) => {
   res.json(events);
 });
 
-// ── GET /portal/my-inquiries ─────────────────────────────────────────────────
+// ΓöÇΓöÇ GET /portal/my-inquiries ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 // Lets a logged-in customer see the inquiries they've submitted and their status.
-router.get('/my-inquiries', requireCustomer, (req, res) => {
+router.get('/my-inquiries', requireCustomer, async (req, res) => {
   const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(req.session.user.id);
 
   // Match inquiries linked to the customer id OR submitted with their email.

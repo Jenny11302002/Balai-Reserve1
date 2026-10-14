@@ -13,7 +13,7 @@ const router = express.Router();
 const CAN_RESPOND = ['admin', 'staff'];
 
 // GET /feedback
-router.get('/', requireAuth, requireRole(...CAN_RESPOND), (req, res) => {
+router.get('/', requireAuth, requireRole(...CAN_RESPOND), async (req, res) => {
   const { rating = '', category = '', page = 1 } = req.query;
   const limit  = 20;
   const offset = (parseInt(page) - 1) * limit;
@@ -67,7 +67,7 @@ router.get('/', requireAuth, requireRole(...CAN_RESPOND), (req, res) => {
 });
 
 // GET /feedback/:id
-router.get('/:id', requireAuth, requireRole(...CAN_RESPOND), (req, res) => {
+router.get('/:id', requireAuth, requireRole(...CAN_RESPOND), async (req, res) => {
   const fb = await db.prepare(`
     SELECT f.*,
            c.first_name || ' ' || c.last_name AS customer_name,
@@ -108,7 +108,7 @@ router.post('/:id/respond',
   [
     body('admin_response').trim().notEmpty().withMessage('Response text is required.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
       req.session.flash = { error: errors.array()[0].msg };
@@ -119,7 +119,7 @@ router.post('/:id/respond',
       UPDATE feedback
       SET admin_response = ?,
           responded_by   = ?,
-          responded_at   = NOW()
+          responded_at   = datetime('now')
       WHERE id = ?
     `).run(req.body.admin_response.trim(), req.session.user.id, req.params.id);
 
@@ -130,7 +130,7 @@ router.post('/:id/respond',
 );
 
 // POST /feedback/:id/toggle-public — show/hide from public view
-router.post('/:id/toggle-public', requireAuth, requireRole('admin'), (req, res) => {
+router.post('/:id/toggle-public', requireAuth, requireRole('admin'), async (req, res) => {
   const fb = await db.prepare(`SELECT id, is_public FROM feedback WHERE id = ?`).get(req.params.id);
   if (!fb) return res.redirect('/feedback');
   await db.prepare(`UPDATE feedback SET is_public = ? WHERE id = ?`).run(fb.is_public ? 0 : 1, fb.id);

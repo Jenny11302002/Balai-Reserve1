@@ -10,8 +10,8 @@ const { requireAuth, requireRole } = require('../../../middleware/auth');
 
 const router = express.Router();
 
-// ── Helper: resort branding for report headers/footers ──────────────────────
-function getResortInfo() {
+// ΓöÇΓöÇ Helper: resort branding for report headers/footers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+async function getResortInfo() {
   const rows = await db.prepare(
     "SELECT key, value FROM settings WHERE key IN ('resort_name','resort_address','resort_phone','resort_email')"
   ).all();
@@ -36,22 +36,22 @@ function escapeHtml(v) {
 }
 
 // GET /reports
-router.get('/', requireAuth, requireRole('admin','staff'), (req, res) => {
+router.get('/', requireAuth, requireRole('admin','staff'), async (req, res) => {
   res.render('reports/index', { title: 'Reports – Balai-Reserve', layout: 'layouts/main' });
 });
 
 // GET /reports/sales
-router.get('/sales', requireAuth, requireRole('admin'), (req, res) => {
+router.get('/sales', requireAuth, requireRole('admin'), async (req, res) => {
   const { from = '', to = '', type = 'monthly' } = req.query;
   const today    = new Date().toISOString().slice(0, 10);
   const fromDate = from || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
   const toDate   = to   || today;
 
   let groupBy, labelFormat;
-  if (type === 'daily')   { groupBy = `CAST(payment_date AS DATE)`;           labelFormat = 'Date'; }
+  if (type === 'daily')   { groupBy = `DATE(payment_date)`;           labelFormat = 'Date'; }
   else if (type === 'weekly') { groupBy = `strftime('%Y-W%W', payment_date)`; labelFormat = 'Week'; }
   else if (type === 'yearly') { groupBy = `strftime('%Y', payment_date)`;     labelFormat = 'Year'; }
-  else                    { groupBy = `TO_CHAR(payment_date, 'YYYY-MM')`;  labelFormat = 'Month'; } // monthly default
+  else                    { groupBy = `strftime('%Y-%m', payment_date)`;  labelFormat = 'Month'; } // monthly default
 
   const salesData = await db.prepare(`
     SELECT ${groupBy} AS period,
@@ -85,7 +85,7 @@ router.get('/sales', requireAuth, requireRole('admin'), (req, res) => {
 });
 
 // GET /reports/reservations
-router.get('/reservations', requireAuth, requireRole('admin','staff'), (req, res) => {
+router.get('/reservations', requireAuth, requireRole('admin','staff'), async (req, res) => {
   const { from='', to='', status='', type='' } = req.query;
   const today    = new Date().toISOString().slice(0, 10);
   const fromDate = from || new Date(new Date().getFullYear(), new Date().getMonth(), 1).toISOString().slice(0, 10);
@@ -125,7 +125,7 @@ router.get('/reservations', requireAuth, requireRole('admin','staff'), (req, res
 });
 
 // GET /reports/events
-router.get('/events', requireAuth, requireRole('admin','staff'), (req, res) => {
+router.get('/events', requireAuth, requireRole('admin','staff'), async (req, res) => {
   const { from='', to='' } = req.query;
   const today    = new Date().toISOString().slice(0, 10);
   const fromDate = from || new Date(new Date().getFullYear(), 0, 1).toISOString().slice(0, 10);
@@ -197,7 +197,7 @@ router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req,
   const generated = new Date().toLocaleString('en-PH');
   const prettyHeaders = headers.map(h => h.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
 
-  // ── Excel (xlsx) via exceljs ───────────────────────────────────────────────
+  // ΓöÇΓöÇ Excel (xlsx) via exceljs ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   if (format === 'xlsx') {
     const wb = new ExcelJS.Workbook();
     wb.creator = resort.name;
@@ -256,7 +256,7 @@ router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req,
     return res.end();
   }
 
-  // ── Word (.doc via HTML) ────────────────────────────────────────────────────
+  // ΓöÇΓöÇ Word (.doc via HTML) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   if (format === 'docx' || format === 'doc' || format === 'word') {
     const th = prettyHeaders.map(h => `<th style="background:#15803d;color:#fff;padding:6px 8px;border:1px solid #cbd5e1;text-align:left;">${escapeHtml(h)}</th>`).join('');
     const trs = rows.map(row => {
@@ -287,7 +287,7 @@ router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req,
     return res.send(html);
   }
 
-  // ── CSV (default) with a small branded preamble ─────────────────────────────
+  // ΓöÇΓöÇ CSV (default) with a small branded preamble ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const csvLines = [];
   csvLines.push(`"${resort.name}"`);
   if (resort.address) csvLines.push(`"${resort.address.replace(/"/g,'""')}"`);

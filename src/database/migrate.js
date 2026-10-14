@@ -32,6 +32,11 @@ const schema     = fs.readFileSync(schemaPath, 'utf8');
 // Execute each statement individually (better-sqlite3 exec handles multi-statement)
 try {
   db.exec(schema);
+  const userColumns = db.pragma('table_info(users)');
+  if (!userColumns.some(column => column.name === 'google_sub')) {
+    db.exec('ALTER TABLE users ADD COLUMN google_sub TEXT');
+  }
+  db.exec('CREATE UNIQUE INDEX IF NOT EXISTS idx_users_google_sub ON users(google_sub)');
   console.log('[Migrate] Schema applied successfully.');
 } catch (err) {
   console.error('[Migrate] Error applying schema:', err.message);

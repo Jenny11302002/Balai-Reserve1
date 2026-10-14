@@ -12,7 +12,7 @@ const router = express.Router();
 const CAN_MANAGE = ['admin','staff'];
 
 // GET /events
-router.get('/', requireAuth, (req, res) => {
+router.get('/', requireAuth, async (req, res) => {
   const { search='', status='', type='', page=1, from='', to='' } = req.query;
   const limit  = 20;
   const offset = (parseInt(page) - 1) * limit;
@@ -54,7 +54,7 @@ router.get('/', requireAuth, (req, res) => {
 });
 
 // GET /events/new
-router.get('/new', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.get('/new', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   const customers = await db.prepare(`SELECT id, customer_code, first_name, last_name FROM customers WHERE status='active' ORDER BY first_name`).all();
   const venues    = await db.prepare(`SELECT id, name, capacity, price FROM venues WHERE is_active=1 ORDER BY name`).all();
   const packages  = await db.prepare(`SELECT * FROM event_packages WHERE is_active=1 ORDER BY name`).all();
@@ -77,7 +77,7 @@ router.post('/',
     body('end_time').notEmpty().withMessage('End time is required.'),
     body('num_attendees').isInt({ min: 1 }).withMessage('Enter a valid attendee count.'),
   ],
-  (req, res) => {
+  async (req, res) => {
     const errors = validationResult(req);
     const customers = await db.prepare(`SELECT id, customer_code, first_name, last_name FROM customers WHERE status='active' ORDER BY first_name`).all();
     const venues    = await db.prepare(`SELECT id, name, capacity, price FROM venues WHERE is_active=1 ORDER BY name`).all();
@@ -125,7 +125,7 @@ router.post('/',
 );
 
 // GET /events/:id
-router.get('/:id', requireAuth, (req, res) => {
+router.get('/:id', requireAuth, async (req, res) => {
   const event = await db.prepare(`
     SELECT e.*, c.first_name || ' ' || c.last_name AS customer_name,
            c.phone AS customer_phone, v.name AS venue_name, ep.name AS package_name
@@ -150,9 +150,9 @@ router.get('/:id', requireAuth, (req, res) => {
 });
 
 // POST /events/:id/status
-router.post('/:id/status', requireAuth, requireRole(...CAN_MANAGE), (req, res) => {
+router.post('/:id/status', requireAuth, requireRole(...CAN_MANAGE), async (req, res) => {
   const { status } = req.body;
-  await db.prepare(`UPDATE events SET status=?, updated_at=NOW() WHERE id=?`).run(status, req.params.id);
+  await db.prepare(`UPDATE events SET status=?, updated_at=datetime('now') WHERE id=?`).run(status, req.params.id);
   req.session.flash = { success: `Event status updated to ${status}.` };
   res.redirect(`/events/${req.params.id}`);
 });

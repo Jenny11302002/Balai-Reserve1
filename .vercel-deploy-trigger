@@ -1,3 +1,0 @@
-Deploy timestamp: 2025-01-13 20:13
-This file triggers Vercel deployment with Node.js 24.x
-Latest commit should have engines: { "node": "24.x" }

@@ -463,7 +463,8 @@
                   <% for (const p of packages) { %>
                   <option value="<%= p.id %>"
                     data-price="<%= p.price %>"
-                    data-name="<%= p.name %>">
+                    data-name="<%= p.name %>"
+                    <%= String(filters.package_id) === String(p.id) ? 'selected' : '' %>>
                     <%= p.name %> — <%= formatPeso(p.price) %>
                   </option>
                   <% } %>

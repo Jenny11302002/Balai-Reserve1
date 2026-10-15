@@ -89,31 +89,41 @@ const run = db.transaction(() => {
   // ── VENUES ────────────────────────────────────────────────────────────────
   console.log('[Seed] Inserting venues...');
   const insertVenue = db.prepare(`
-    INSERT OR IGNORE INTO venues
+    INSERT INTO venues
       (name, venue_type, capacity, description, location, price, amenities, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'available')
+    SELECT ?, ?, ?, ?, ?, ?, ?, 'available'
+    WHERE NOT EXISTS (SELECT 1 FROM venues WHERE name = ? COLLATE NOCASE)
   `);
-  insertVenue.run('Main House Function Hall',    'function_hall', 150, 'Elegant air-conditioned main house function hall for events', 'Main House',     15000, JSON.stringify(['Sound System','Projector','AC','Stage','Tables','Chairs']));
-  insertVenue.run('Villa Isabella Function Hall','function_hall', 100, 'Beautiful Villa Isabella function hall for celebrations',     'Villa Isabella', 12000, JSON.stringify(['Sound System','Projector','AC','Tables','Chairs']));
-  insertVenue.run('Pavillion Function Hall',     'pavilion',      200, 'Open-air pavilion perfect for large gatherings and events',   'Pavilion Area',  10000, JSON.stringify(['Stage','Sound System','Outdoor Lighting','Tables','Chairs']));
+  const seedVenue = (name, ...values) => insertVenue.run(name, ...values, name);
+  seedVenue('Main House Function Hall',    'function_hall', 150, 'Elegant air-conditioned main house function hall for events', 'Main House',     15000, JSON.stringify(['Sound System','Projector','AC','Stage','Tables','Chairs']));
+  seedVenue('Villa Isabella Function Hall','function_hall', 100, 'Beautiful Villa Isabella function hall for celebrations',     'Villa Isabella', 12000, JSON.stringify(['Sound System','Projector','AC','Tables','Chairs']));
+  seedVenue('Pavillion Function Hall',     'pavilion',      200, 'Open-air pavilion perfect for large gatherings and events',   'Pavilion Area',  10000, JSON.stringify(['Stage','Sound System','Outdoor Lighting','Tables','Chairs']));
 
   // ── COTTAGES ──────────────────────────────────────────────────────────────
   console.log('[Seed] Inserting cottages...');
   const insertCottage = db.prepare(`
-    INSERT OR IGNORE INTO cottages (name, description, capacity, price, amenities, status)
-    VALUES (?, ?, ?, ?, ?, 'available')
+    INSERT INTO cottages (name, description, capacity, price, amenities, status)
+    SELECT ?, ?, ?, ?, ?, 'available'
+    WHERE NOT EXISTS (SELECT 1 FROM cottages WHERE name = ? COLLATE NOCASE)
   `);
-  insertCottage.run('Cottage',        'Shaded cottage near the pool — ideal for small groups',    5, 500,  JSON.stringify(['Fan','Table','Chairs']));
-  insertCottage.run('Umbrella Table', 'Beachside umbrella table perfect for a cozy group outing', 4, 300,  JSON.stringify(['Umbrella','Table','Chairs']));
-  insertCottage.run('Pavillion',      'Large open pavilion accommodating big gatherings',        60, 2000, JSON.stringify(['Tables','Chairs','Outdoor Lighting']));
+  const seedCottage = (name, ...values) => insertCottage.run(name, ...values, name);
+  seedCottage('Cottage',        'Shaded cottage near the pool — ideal for small groups',    5, 500,  JSON.stringify(['Fan','Table','Chairs']));
+  seedCottage('Umbrella Table', 'Beachside umbrella table perfect for a cozy group outing', 4, 300, JSON.stringify(['Umbrella','Table','Chairs']));
+  seedCottage('Pavillion',      'Large open pavilion accommodating big gatherings',        60, 2000, JSON.stringify(['Tables','Chairs','Outdoor Lighting']));
 
   // ── EVENT PACKAGES ────────────────────────────────────────────────────────
   console.log('[Seed] Inserting event packages...');
   const insertPackage = db.prepare(`
-    INSERT OR IGNORE INTO event_packages (name, description, event_type, price, inclusions, capacity)
-    VALUES (?, ?, ?, ?, ?, ?)
+    INSERT INTO event_packages (name, description, event_type, price, inclusions, capacity)
+    SELECT ?, ?, ?, ?, ?, ?
+    WHERE NOT EXISTS (
+      SELECT 1 FROM event_packages
+      WHERE name = ? COLLATE NOCASE AND COALESCE(event_type, '') = COALESCE(?, '')
+    )
   `);
-  insertPackage.run('Wedding Package A', 'Basic wedding package for intimate celebrations', 'wedding', 50000,
+  const seedPackage = (name, description, eventType, price, inclusions, capacity) =>
+    insertPackage.run(name, description, eventType, price, inclusions, capacity, name, eventType);
+  seedPackage('Wedding Package A', 'Basic wedding package for intimate celebrations', 'wedding', 50000,
     JSON.stringify([
       { name: 'Venue (4 hrs)',          price: 0,    is_default: 1, is_optional: 0 },
       { name: 'Catering (50 pax)',       price: 0,    is_default: 1, is_optional: 0 },
@@ -127,7 +137,7 @@ const run = db.transaction(() => {
       { name: 'Emcee / Host',            price: 3000, is_default: 0, is_optional: 1 },
     ]), 50);
 
-  insertPackage.run('Wedding Package B', 'Premium wedding package with full decoration', 'wedding', 80000,
+  seedPackage('Wedding Package B', 'Premium wedding package with full decoration', 'wedding', 80000,
     JSON.stringify([
       { name: 'Venue (8 hrs)',          price: 0,    is_default: 1, is_optional: 0 },
       { name: 'Catering (100 pax)',      price: 0,    is_default: 1, is_optional: 0 },
@@ -143,7 +153,7 @@ const run = db.transaction(() => {
       { name: 'Photo Booth (4 hrs)',      price: 5000, is_default: 0, is_optional: 1 },
     ]), 100);
 
-  insertPackage.run('Birthday Package', 'Fun birthday celebration package', 'birthday', 15000,
+  seedPackage('Birthday Package', 'Fun birthday celebration package', 'birthday', 15000,
     JSON.stringify([
       { name: 'Venue (4 hrs)',           price: 0,    is_default: 1, is_optional: 0 },
       { name: 'Catering (30 pax)',        price: 0,    is_default: 1, is_optional: 0 },
@@ -157,7 +167,7 @@ const run = db.transaction(() => {
       { name: 'Custom Backdrop',          price: 1500, is_default: 0, is_optional: 1 },
     ]), 30);
 
-  insertPackage.run('Debut Package', 'Elegant 18th birthday debut celebration', 'debut', 35000,
+  seedPackage('Debut Package', 'Elegant 18th birthday debut celebration', 'debut', 35000,
     JSON.stringify([
       { name: 'Venue (6 hrs)',           price: 0,    is_default: 1, is_optional: 0 },
       { name: 'Catering (80 pax)',        price: 0,    is_default: 1, is_optional: 0 },
@@ -173,7 +183,7 @@ const run = db.transaction(() => {
       { name: 'Emcee / Host',             price: 3000, is_default: 0, is_optional: 1 },
     ]), 80);
 
-  insertPackage.run('Corporate Package', 'Professional corporate event package', 'corporate', 25000,
+  seedPackage('Corporate Package', 'Professional corporate event package', 'corporate', 25000,
     JSON.stringify([
       { name: 'Venue (8 hrs)',           price: 0,    is_default: 1, is_optional: 0 },
       { name: 'Catering (50 pax)',        price: 0,    is_default: 1, is_optional: 0 },
@@ -188,7 +198,7 @@ const run = db.transaction(() => {
       { name: 'Photo / Video Coverage',   price: 5000, is_default: 0, is_optional: 1 },
     ]), 50);
 
-  insertPackage.run('Meeting Package', 'Half-day meeting room package', 'meeting', 5000,
+  seedPackage('Meeting Package', 'Half-day meeting room package', 'meeting', 5000,
     JSON.stringify([
       { name: 'Conference Room (4 hrs)', price: 0,    is_default: 1, is_optional: 0 },
       { name: 'Water & Coffee',          price: 0,    is_default: 1, is_optional: 1 },

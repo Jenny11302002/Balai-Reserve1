@@ -78,8 +78,9 @@ db.transaction(() => {
   db.prepare(`UPDATE venues SET is_active = 0`).run();
 
   const insertVenueM = db.prepare(`
-    INSERT OR IGNORE INTO venues (name, venue_type, capacity, description, location, price, amenities, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, 'available')
+    INSERT INTO venues (name, venue_type, capacity, description, location, price, amenities, status)
+    SELECT ?, ?, ?, ?, ?, ?, ?, 'available'
+    WHERE NOT EXISTS (SELECT 1 FROM venues WHERE name = ? COLLATE NOCASE)
   `);
   const activateVenue = db.prepare(`UPDATE venues SET is_active = 1, venue_type=?, capacity=?, price=?, amenities=? WHERE name = ?`);
 
@@ -90,7 +91,7 @@ db.transaction(() => {
   ];
 
   for (const [name, vtype, cap, desc, loc, price, amen] of venueRows) {
-    insertVenueM.run(name, vtype, cap, desc, loc, price, amen);
+    insertVenueM.run(name, vtype, cap, desc, loc, price, amen, name);
     activateVenue.run(vtype, cap, price, amen, name);
   }
 
@@ -101,8 +102,9 @@ db.transaction(() => {
   db.prepare(`UPDATE cottages SET is_active = 0`).run();
 
   const insertCottageM = db.prepare(`
-    INSERT OR IGNORE INTO cottages (name, description, capacity, price, amenities, status)
-    VALUES (?, ?, ?, ?, ?, 'available')
+    INSERT INTO cottages (name, description, capacity, price, amenities, status)
+    SELECT ?, ?, ?, ?, ?, 'available'
+    WHERE NOT EXISTS (SELECT 1 FROM cottages WHERE name = ? COLLATE NOCASE)
   `);
   const activateCottage = db.prepare(`UPDATE cottages SET is_active = 1, capacity=?, price=?, amenities=? WHERE name = ?`);
 
@@ -113,7 +115,7 @@ db.transaction(() => {
   ];
 
   for (const [name, desc, cap, price, amen] of cottageRows) {
-    insertCottageM.run(name, desc, cap, price, amen);
+    insertCottageM.run(name, desc, cap, price, amen, name);
     activateCottage.run(cap, price, amen, name);
   }
 

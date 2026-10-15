@@ -24,6 +24,7 @@ const { generateReservationQR }    = require('../../../utils/qrGenerator');
 const { notifyAllAdmins, notifyUser } = require('../../../utils/notifications');
 const { validateGcashScreenshot }     = require('../../../utils/gcashValidator');
 const { calculateCottageTotal, validateCottageTimeRange } = require('../../../utils/cottagePricing');
+const { uniqueCatalogRows } = require('../../../utils/catalog');
 
 const router = express.Router();
 
@@ -184,8 +185,8 @@ async function calculateServerTotal(reservation_type, roomId, venueId, pkgId, ci
 // ΓöÇΓöÇ GET /portal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 router.get('/', requireCustomerOrGuest, async (req, res) => {
   const availableRooms  = await db.prepare('SELECT COUNT(*) AS c FROM rooms  WHERE status=\'available\' AND is_active=1').get().c;
-  const availableVenues = await db.prepare('SELECT COUNT(*) AS c FROM venues WHERE status=\'available\' AND is_active=1').get().c;
-  const availableCottages = await db.prepare('SELECT COUNT(*) AS c FROM cottages WHERE status=\'available\' AND is_active=1').get().c;
+  const availableVenues = await db.prepare('SELECT COUNT(DISTINCT lower(trim(name))) AS c FROM venues WHERE status=\'available\' AND is_active=1').get().c;
+  const availableCottages = await db.prepare('SELECT COUNT(DISTINCT lower(trim(name))) AS c FROM cottages WHERE status=\'available\' AND is_active=1').get().c;
 
   const featuredRooms = await db.prepare(
     'SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.status=\'available\' AND r.is_active=1 ORDER BY r.price LIMIT 3'
@@ -194,21 +195,24 @@ router.get('/', requireCustomerOrGuest, async (req, res) => {
     try { r.imagesList = JSON.parse(r.images || '[]'); } catch { r.imagesList = []; }
   }
 
-  const featuredVenues = await db.prepare(
-    'SELECT * FROM venues WHERE status=\'available\' AND is_active=1 ORDER BY price LIMIT 3'
-  ).all();
+  const featuredVenues = uniqueCatalogRows(await db.prepare(
+    'SELECT * FROM venues WHERE status=\'available\' AND is_active=1 ORDER BY price'
+  ).all()).slice(0, 3);
   for (const v of featuredVenues) {
     try { v.imagesList = JSON.parse(v.images || '[]'); } catch { v.imagesList = []; }
   }
 
-  const featuredCottages = await db.prepare(
-    'SELECT * FROM cottages WHERE status=\'available\' AND is_active=1 ORDER BY price LIMIT 3'
-  ).all();
+  const featuredCottages = uniqueCatalogRows(await db.prepare(
+    'SELECT * FROM cottages WHERE status=\'available\' AND is_active=1 ORDER BY price'
+  ).all()).slice(0, 3);
   for (const c of featuredCottages) {
     try { c.imagesList = JSON.parse(c.images || '[]'); } catch { c.imagesList = []; }
   }
 
-  const packages = await db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price LIMIT 4').all();
+  const packages = uniqueCatalogRows(
+    await db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price').all(),
+    p => `${p.event_type || ''}:${p.name}`
+  ).slice(0, 4);
 
   res.render('portal/home', {
     title: 'Welcome to Balai-Reserve',
@@ -278,7 +282,11 @@ router.get('/venues', requireCustomerOrGuest, async (req, res) => {
 
   const orderBy = sort === 'price_desc' ? 'price DESC' : 'price ASC';
 
-  const venues = await db.prepare(`SELECT * FROM venues ${where} ORDER BY ${orderBy}`).all(...params);
+  const venues = uniqueCatalogRows(
+    await db.prepare(`SELECT * FROM venues ${where} ORDER BY ${orderBy}`).all(...params),
+    row => row.name,
+    req.query.item_id
+  );
 
   // Parse images and compute availability
   for (const v of venues) {
@@ -290,7 +298,10 @@ router.get('/venues', requireCustomerOrGuest, async (req, res) => {
   const venueTypes = await db.prepare(
     `SELECT DISTINCT venue_type FROM venues WHERE is_active = 1 ORDER BY venue_type`
   ).all().map(r => r.venue_type);
-  const packages   = await db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price').all();
+  const packages   = uniqueCatalogRows(
+    await db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price').all(),
+    p => `${p.event_type || ''}:${p.name}`
+  );
 
   // Parse inclusions for packages
   for (const p of packages) {
@@ -317,7 +328,11 @@ router.get('/cottages', requireCustomerOrGuest, async (req, res) => {
 
   const orderBy = sort === 'price_desc' ? 'price DESC' : 'price ASC';
 
-  const cottages = await db.prepare(`SELECT * FROM cottages ${where} ORDER BY ${orderBy}`).all(...params);
+  const cottages = uniqueCatalogRows(
+    await db.prepare(`SELECT * FROM cottages ${where} ORDER BY ${orderBy}`).all(...params),
+    row => row.name,
+    req.query.item_id
+  );
 
   for (const c of cottages) {
     try { c.imagesList = JSON.parse(c.images || '[]'); } catch { c.imagesList = []; }
@@ -338,8 +353,16 @@ router.get('/book', requireCustomer, async (req, res) => {
   const { type = '', item_id = '', package_id = '', checkin = '', checkout = '', date = '' } = req.query;
 
   const rooms    = await db.prepare('SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.status=\'available\' AND r.is_active=1 ORDER BY r.price').all();
-  const venues   = await db.prepare('SELECT * FROM venues WHERE status=\'available\' AND is_active=1 ORDER BY price').all();
-  const rawPkgs  = await db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price').all();
+  const venues   = uniqueCatalogRows(
+    await db.prepare('SELECT * FROM venues WHERE status=\'available\' AND is_active=1 ORDER BY price').all(),
+    row => row.name,
+    item_id
+  );
+  const rawPkgs  = uniqueCatalogRows(
+    await db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price').all(),
+    p => `${p.event_type || ''}:${p.name}`,
+    package_id
+  );
 
   // Parse image arrays so the booking page can show a gallery of the selected item.
   const parseImgs = (row) => {
@@ -372,7 +395,11 @@ router.get('/book', requireCustomer, async (req, res) => {
   if (item_id && type === 'venue')   selectedItem = await db.prepare('SELECT * FROM venues WHERE id=?').get(item_id);
   if (item_id && type === 'cottage') selectedItem = await db.prepare('SELECT * FROM cottages WHERE id=?').get(item_id);
 
-  const cottages = await db.prepare('SELECT * FROM cottages WHERE status=\'available\' AND is_active=1 ORDER BY price').all();
+  const cottages = uniqueCatalogRows(
+    await db.prepare('SELECT * FROM cottages WHERE status=\'available\' AND is_active=1 ORDER BY price').all(),
+    row => row.name,
+    item_id
+  );
   cottages.forEach(parseImgs);
   if (selectedItem) parseImgs(selectedItem);
 

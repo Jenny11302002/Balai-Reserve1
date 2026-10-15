@@ -58,6 +58,8 @@ const settingsRoutes     = require('./src/modules/settings/routes');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 const isDev= process.env.NODE_ENV !== 'production';
+// Vercel terminates TLS at the edge; trust its forwarded protocol for secure cookies.
+app.set('trust proxy', 1);
 
 // ΓöÇΓöÇ Security Headers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 app.use(helmet({

@@ -228,12 +228,10 @@ router.post('/login',
   async (req, res, next) => {
     const errors = validationResult(req);
     if (!errors.isEmpty()) {
-      return res.render('auth/login', {
-        title: 'Sign In - Balai-Reserve',
-        layout: 'layouts/auth',
-        errors: errors.array(),
-        old: { email: req.body.email },
-        googleLoginEnabled: Boolean(getGoogleOAuthConfig()),
+      req.session.flash = { error: errors.array()[0].msg };
+      return req.session.save(error => {
+        if (error) return next(error);
+        return res.redirect('/auth/login');
       });
     }
 
@@ -247,18 +245,22 @@ router.post('/login',
       `, [email]);
 
       if (!user || !user.password_hash || !bcrypt.compareSync(password, user.password_hash)) {
-        return res.render('auth/login', {
-          title: 'Sign In - Balai-Reserve',
-          layout: 'layouts/auth',
-          errors: [{ msg: 'Invalid email or password. Please try again.' }],
-          old: { email },
-          googleLoginEnabled: Boolean(getGoogleOAuthConfig()),
+        req.session.flash = { error: 'Invalid email or password. Please try again.' };
+        return req.session.save(error => {
+          if (error) return next(error);
+          return res.redirect('/auth/login');
         });
       }
 
       db.prepare("UPDATE users SET last_login = datetime('now') WHERE id = ?").run(user.id);
-      req.session.user = buildSessionUser(user);
-      return postLoginRedirect(req, res, user.role);
+      const returnTo = req.session.returnTo;
+      return req.session.regenerate(error => {
+        if (error) return next(error);
+
+        req.session.user = buildSessionUser(user);
+        if (returnTo) req.session.returnTo = returnTo;
+        return postLoginRedirect(req, res, user.role);
+      });
     } catch (error) {
       return next(error);
     }

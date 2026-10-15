@@ -345,7 +345,7 @@ router.post('/book',
       }
     }
 
-    const bookingRef = generateBookingRef();
+    const bookingRef = await generateBookingRef();
 
     // ═══════════════════════════════════════════════════════════════════════
     // 🔧 THE FINAL FIX: Sanitize ALL values (including user fields) before SQLite binding

@@ -358,11 +358,17 @@ router.post('/register',
         WHERE u.id = ?
       `, [userId]);
 
-      req.session.user = buildSessionUser(newUser);
-      req.session.flash = {
-        success: `Welcome, ${first_name}! Your account has been created. You can now make a booking.`,
-      };
-      return res.redirect('/portal');
+      const returnTo = req.session.returnTo;
+      return req.session.regenerate(error => {
+        if (error) return next(error);
+
+        req.session.user = buildSessionUser(newUser);
+        if (returnTo) req.session.returnTo = returnTo;
+        req.session.flash = {
+          success: `Welcome, ${first_name}! Your account has been created. You can now make a booking.`,
+        };
+        return postLoginRedirect(req, res, newUser.role);
+      });
     } catch (error) {
       if (error.code === 'SQLITE_CONSTRAINT_UNIQUE') {
         return res.render('auth/register', {

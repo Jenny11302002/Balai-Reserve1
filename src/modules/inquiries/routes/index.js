@@ -143,7 +143,12 @@ router.post('/chat', async (req, res) => {
   if (!message) return res.json({ reply: 'Please type your question.' });
 
   const reply = await autoAnswer(message);
-  res.json({ reply });
+  if (typeof reply !== 'string') {
+    console.error('[Inquiries] Chat assistant returned a non-text reply.');
+    return res.status(500).json({ error: 'Unable to generate a reply.' });
+  }
+
+  res.set('Cache-Control', 'no-store').json({ reply });
 });
 
 /**

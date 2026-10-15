@@ -7,6 +7,7 @@ const express = require('express');
 const ExcelJS = require('exceljs');
 const db      = require('../../../config/database');
 const { requireAuth, requireRole } = require('../../../middleware/auth');
+const { formatExcelValue, getColumnWidth } = require('./xlsxFormatting');
 
 const router = express.Router();
 const REPORT_BRAND = {
@@ -243,18 +244,18 @@ router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req,
       cell.border = { bottom: { style: 'thin' } };
     });
 
-    // Data rows
+    // Write date values as text so Excel displays them even in narrow columns.
     for (const row of rows) {
-      ws.addRow(headers.map(h => row[h] ?? ''));
+      ws.addRow(headers.map(h => formatExcelValue(row[h], h)));
     }
-    // Auto width
-    ws.columns.forEach((col, i) => {
-      let max = prettyHeaders[i] ? prettyHeaders[i].length : 10;
-      col.eachCell({ includeEmpty: false }, (cell) => {
-        const len = String(cell.value ?? '').length;
-        if (len > max) max = len;
+
+    headers.forEach((header, index) => {
+      const column = ws.getColumn(index + 1);
+      const values = rows.map(row => formatExcelValue(row[header], header));
+      column.width = getColumnWidth(prettyHeaders[index], values, header);
+      column.eachCell({ includeEmpty: false }, cell => {
+        cell.alignment = { ...cell.alignment, vertical: 'top', wrapText: true };
       });
-      col.width = Math.min(Math.max(max + 2, 10), 40);
     });
 
     res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');

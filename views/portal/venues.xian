@@ -179,7 +179,7 @@
                 title="View photos"><i class="fas fa-images"></i></button>
               <% } %>
               <% if (v.isAvailable) { %>
-              <a href="/portal/book?type=venue&item_id=<%= v.id %>" class="btn btn-primary btn-sm px-3">Book</a>
+              <a href="/portal/book?type=venue&item_id=<%= v.id %>&date=<%= encodeURIComponent(filters.date) %>" class="btn btn-primary btn-sm px-3">Book</a>
               <% } else { %>
               <span class="btn btn-sm px-3 disabled" style="background:#e5e7eb;color:#9ca3af;cursor:not-allowed;"><i class="fas fa-ban me-1"></i>Unavailable</span>
               <% } %>
@@ -232,7 +232,7 @@
               <div class="accom-price" style="font-size:1.1rem;"><%= formatPeso(p.price) %></div>
               <div style="font-size:.72rem;color:#d97706;">DP: <%= formatPeso(Math.ceil(p.price * 0.5)) %></div>
             </div>
-            <a href="/portal/book?type=event&package_id=<%= p.id %>" class="btn btn-warning btn-sm">Book Package</a>
+            <a href="/portal/book?type=event&package_id=<%= p.id %>&date=<%= encodeURIComponent(filters.date) %>" class="btn btn-warning btn-sm">Book Package</a>
           </div>
         </div>
       </div>

@@ -11,6 +11,17 @@
 <div class="row g-3">
   <div class="col-lg-4">
     <div class="card">
+      <% if (venue.imagesList && venue.imagesList.length > 0) { %>
+      <div class="row g-1 p-2">
+        <% for (const image of venue.imagesList) { %>
+        <div class="<%= venue.imagesList.length === 1 ? 'col-12' : 'col-6' %>">
+          <img src="<%= image %>" alt="<%= venue.name %> photo" class="img-fluid rounded js-zoom"
+            style="height:140px;width:100%;object-fit:cover;cursor:zoom-in;"
+            onclick="openImgLightbox('<%= image %>')" />
+        </div>
+        <% } %>
+      </div>
+      <% } %>
       <div class="card-body">
         <table class="table table-sm table-borderless mb-0">
           <tr><th>Type</th><td><%= venue.venue_type.replace(/_/g,' ') %></td></tr>

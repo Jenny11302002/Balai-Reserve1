@@ -44,6 +44,76 @@ const proofUpload = multer({
 });
 
 const STAFF_ROLES = ['admin','staff'];
+const BOOKABLE_RESOURCE_STATUSES = new Set(['available', 'reserved', 'occupied', 'cleaning']);
+function activeItemReservations(itemType) {
+  return db.prepare(`
+    SELECT ri.item_id, r.reservation_type, r.check_in_date, r.check_out_date,
+           r.event_date, r.start_time, r.end_time
+    FROM reservation_items ri
+    JOIN reservations r ON r.id = ri.reservation_id
+    WHERE ri.item_type = ?
+      AND r.status NOT IN ('cancelled', 'rejected', 'completed', 'no_show', 'checked_out')
+  `).all(itemType);
+}
+
+function reservationOverlaps(itemType, reservation, requested) {
+  if (itemType === 'room') {
+    return Boolean(
+      requested.checkIn && requested.checkOut &&
+      reservation.check_in_date && reservation.check_out_date &&
+      reservation.check_in_date < requested.checkOut &&
+      reservation.check_out_date > requested.checkIn
+    );
+  }
+
+  const reservationDate = itemType === 'venue' ? reservation.event_date : reservation.check_in_date;
+  if (!requested.date || reservationDate !== requested.date) return false;
+  if (itemType === 'cottage' && requested.wholeDay) return true;
+  if (!requested.startTime || !requested.endTime ||
+      !reservation.start_time || !reservation.end_time) return true;
+  return reservation.start_time < requested.endTime &&
+    reservation.end_time > requested.startTime;
+}
+
+function unavailableItemIds(itemType, requested) {
+  const unavailable = new Set();
+  for (const reservation of activeItemReservations(itemType)) {
+    if (reservationOverlaps(itemType, reservation, requested)) unavailable.add(reservation.item_id);
+  }
+  return unavailable;
+}
+
+function resourceDetails(reservationType, itemId) {
+  const table = {
+    room: 'rooms',
+    venue: 'venues',
+    event: 'venues',
+    cottage: 'cottages',
+  }[reservationType];
+  if (!table || !Number.isInteger(itemId) || itemId < 1) return null;
+  return db.prepare(`SELECT id, name, price, capacity, status, is_active FROM ${table} WHERE id = ?`).get(itemId) || null;
+}
+
+function resourceConflict(reservationType, itemId, requested) {
+  const itemType = reservationType === 'event' ? 'venue' : reservationType;
+  return activeItemReservations(itemType).some(reservation =>
+    reservation.item_id === itemId && reservationOverlaps(itemType, reservation, requested)
+  );
+}
+
+function removeUploadedProof(file) {
+  if (!file) return;
+  try {
+    fs.unlinkSync(file.path);
+  } catch (error) {
+    if (error.code !== 'ENOENT') console.error('[Portal] Could not remove rejected payment proof:', error.message);
+  }
+}
+
+function getDownpaymentPercent(value) {
+  const percent = Number.parseFloat(value || '50');
+  return Number.isFinite(percent) && percent > 0 && percent <= 100 ? percent : 50;
+}
 
 async function requireCustomerOrGuest(req, res, next) {
   if (req.session?.user && STAFF_ROLES.includes(req.session.user.role)) {
@@ -156,12 +226,15 @@ router.get('/rooms', requireCustomerOrGuest, async (req, res) => {
   if (guests) { where += ' AND r.capacity>=?'; params.push(parseInt(guests)); }
   let bookedIds = new Set();
   if (checkin && checkout) {
-    const rows = await db.prepare(`SELECT ri.item_id FROM reservation_items ri JOIN reservations res ON res.id=ri.reservation_id WHERE ri.item_type='room' AND res.status NOT IN ('cancelled','rejected','completed','no_show') AND (res.check_in_date < ? AND res.check_out_date > ?)`).all(checkout, checkin);
-    bookedIds = new Set(rows.map(r => r.item_id));
+    bookedIds = unavailableItemIds('room', { checkIn: checkin, checkOut: checkout });
   }
   const orderBy = sort === 'price_desc' ? 'r.price DESC' : 'r.price ASC';
   const rooms = await db.prepare(`SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id ${where} ORDER BY ${orderBy}`).all(...params);
-  for (const r of rooms) { try { r.imagesList = JSON.parse(r.images || '[]'); } catch { r.imagesList = []; } r.isAvailable = (r.status === 'available') && !bookedIds.has(r.id); }
+  for (const r of rooms) {
+    try { r.imagesList = JSON.parse(r.images || '[]'); } catch { r.imagesList = []; }
+    r.isAvailable = BOOKABLE_RESOURCE_STATUSES.has(r.status) &&
+      (checkin && checkout ? !bookedIds.has(r.id) : true);
+  }
   const roomTypes = await db.prepare('SELECT DISTINCT rt.name FROM room_types rt JOIN rooms r ON r.room_type_id = rt.id WHERE r.is_active = 1 ORDER BY rt.name').all();
   res.render('portal/rooms', { title: 'Browse Rooms – Balai-Reserve', layout: 'layouts/portal', rooms, roomTypes, filters: { checkin, checkout, guests, type, sort } });
 });
@@ -174,7 +247,13 @@ router.get('/venues', requireCustomerOrGuest, async (req, res) => {
   if (guests) { where += ' AND capacity>=?';  params.push(parseInt(guests)); }
   const orderBy = sort === 'price_desc' ? 'price DESC' : 'price ASC';
   const venues = uniqueCatalogRows(await db.prepare(`SELECT * FROM venues ${where} ORDER BY ${orderBy}`).all(...params), row => row.name, req.query.item_id);
-  for (const v of venues) { try { v.imagesList = JSON.parse(v.images || '[]'); } catch { v.imagesList = []; } try { v.amenitiesList = JSON.parse(v.amenities || '[]'); } catch { v.amenitiesList = []; } v.isAvailable = (v.status === 'available'); }
+  const bookedIds = date ? unavailableItemIds('venue', { date }) : new Set();
+  for (const v of venues) {
+    try { v.imagesList = JSON.parse(v.images || '[]'); } catch { v.imagesList = []; }
+    try { v.amenitiesList = JSON.parse(v.amenities || '[]'); } catch { v.amenitiesList = []; }
+    v.isAvailable = BOOKABLE_RESOURCE_STATUSES.has(v.status) &&
+      (date ? !bookedIds.has(v.id) : true);
+  }
   const venueTypes = await db.prepare(`SELECT DISTINCT venue_type FROM venues WHERE is_active = 1 ORDER BY venue_type`).all().map(r => r.venue_type);
   const packages = uniqueCatalogRows(await db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price').all(), p => `${p.event_type || ''}:${p.name}`);
   for (const p of packages) { try { p.inclusionsList = JSON.parse(p.inclusions || '[]'); } catch { p.inclusionsList = []; } }
@@ -189,14 +268,20 @@ router.get('/cottages', requireCustomerOrGuest, async (req, res) => {
   if (max_price) { where += ' AND price<=?';    params.push(parseFloat(max_price)); }
   const orderBy = sort === 'price_desc' ? 'price DESC' : 'price ASC';
   const cottages = uniqueCatalogRows(await db.prepare(`SELECT * FROM cottages ${where} ORDER BY ${orderBy}`).all(...params), row => row.name, req.query.item_id);
-  for (const c of cottages) { try { c.imagesList = JSON.parse(c.images || '[]'); } catch { c.imagesList = []; } try { c.amenitiesList = JSON.parse(c.amenities || '[]'); } catch { c.amenitiesList = []; } c.isAvailable = (c.status === 'available'); }
+  const bookedIds = date ? unavailableItemIds('cottage', { date }) : new Set();
+  for (const c of cottages) {
+    try { c.imagesList = JSON.parse(c.images || '[]'); } catch { c.imagesList = []; }
+    try { c.amenitiesList = JSON.parse(c.amenities || '[]'); } catch { c.amenitiesList = []; }
+    c.isAvailable = BOOKABLE_RESOURCE_STATUSES.has(c.status) &&
+      (date ? !bookedIds.has(c.id) : true);
+  }
   res.render('portal/cottages', { title: 'Browse Cottages – Balai-Reserve', layout: 'layouts/portal', cottages, filters: { date, guests, sort, max_price } });
 });
 
 router.get('/book', requireCustomer, async (req, res) => {
   const { type = '', item_id = '', package_id = '', checkin = '', checkout = '', date = '' } = req.query;
-  const rooms = await db.prepare("SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.status='available' AND r.is_active=1 ORDER BY r.price").all();
-  const venues = uniqueCatalogRows(await db.prepare("SELECT * FROM venues WHERE status='available' AND is_active=1 ORDER BY price").all(), row => row.name, item_id);
+  const rooms = await db.prepare("SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.status IN ('available','reserved','occupied','cleaning') AND r.is_active=1 ORDER BY r.price").all();
+  const venues = uniqueCatalogRows(await db.prepare("SELECT * FROM venues WHERE status IN ('available','reserved','occupied','cleaning') AND is_active=1 ORDER BY price").all(), row => row.name, item_id);
   const rawPkgs = uniqueCatalogRows(await db.prepare('SELECT * FROM event_packages WHERE is_active=1 ORDER BY price').all(), p => `${p.event_type || ''}:${p.name}`, package_id);
   const parseImgs = (row) => { try { row.imagesList = JSON.parse(row.images || '[]'); } catch { row.imagesList = []; } return row; };
   rooms.forEach(parseImgs);
@@ -211,14 +296,14 @@ router.get('/book', requireCustomer, async (req, res) => {
   if (item_id && type === 'room')    selectedItem = await db.prepare('SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id WHERE r.id=?').get(item_id);
   if (item_id && type === 'venue')   selectedItem = await db.prepare('SELECT * FROM venues WHERE id=?').get(item_id);
   if (item_id && type === 'cottage') selectedItem = await db.prepare('SELECT * FROM cottages WHERE id=?').get(item_id);
-  const cottages = uniqueCatalogRows(await db.prepare("SELECT * FROM cottages WHERE status='available' AND is_active=1 ORDER BY price").all(), row => row.name, item_id);
+  const cottages = uniqueCatalogRows(await db.prepare("SELECT * FROM cottages WHERE status IN ('available','reserved','occupied','cleaning') AND is_active=1 ORDER BY price").all(), row => row.name, item_id);
   cottages.forEach(parseImgs);
   if (selectedItem) parseImgs(selectedItem);
   const policyKeys = ['cancellation_policy','downpayment_percent','check_in_time','check_out_time','resort_name'];
   const policyRows = await db.prepare(`SELECT key, value FROM settings WHERE key IN (${policyKeys.map(() => '?').join(',')})`).all(...policyKeys);
   const ps = {};
   for (const r of policyRows) ps[r.key] = r.value || '';
-  const terms = { resortName: ps.resort_name || 'Balai Miciano Resort', downpaymentPercent: ps.downpayment_percent || '50', checkInTime: ps.check_in_time || '14:00', checkOutTime: ps.check_out_time || '12:00', cancellationPolicy: ps.cancellation_policy || 'Cancellations made 7 days before the reservation date are eligible for a 50% refund. No refund for cancellations within 48 hours of the reservation date.' };
+  const terms = { resortName: ps.resort_name || 'Balai Miciano Resort', downpaymentPercent: getDownpaymentPercent(ps.downpayment_percent), checkInTime: ps.check_in_time || '14:00', checkOutTime: ps.check_out_time || '12:00', cancellationPolicy: ps.cancellation_policy || 'Cancellations made 7 days before the reservation date are eligible for a 50% refund. No refund for cancellations within 48 hours of the reservation date.' };
   res.render('portal/book', { title: 'Book Now – Balai-Reserve', layout: 'layouts/portal', rooms, venues, packages, cottages, filters: { type, item_id, package_id, checkin, checkout, date }, selectedItem, lockedSelection: !!(selectedItem && ['room','venue','cottage'].includes(type)), terms, errors: [], old: {} });
 });
 
@@ -228,9 +313,19 @@ router.get('/book', requireCustomer, async (req, res) => {
 router.post('/book',
   requireCustomer,
   [
-    body('reservation_type').notEmpty().withMessage('Please select what you want to book.'),
-    body('num_guests').isInt({ min: 1 }).withMessage('Number of guests must be at least 1.'),
-    body('payment_method').notEmpty().withMessage('Please select a payment method.'),
+    body('reservation_type').isIn(['room','venue','event','cottage']).withMessage('Please select what you want to book.'),
+    body('item_id').custom((value, { req: r }) => {
+      const needsResource = ['room','venue','cottage'].includes(r.body.reservation_type);
+      if (needsResource && !/^[1-9]\d*$/.test(String(value || ''))) {
+        throw new Error('Please select a valid room, venue, or cottage.');
+      }
+      if (value && !/^[1-9]\d*$/.test(String(value))) {
+        throw new Error('Please select a valid room, venue, or cottage.');
+      }
+      return true;
+    }),
+    body('num_guests').isInt({ min: 1, max: 500 }).withMessage('Number of guests must be between 1 and 500.'),
+    body('payment_method').isIn(['gcash','bank_transfer','maya','cash']).withMessage('Please select a valid payment method.'),
     body('contact_phone').trim().notEmpty().withMessage('Please enter your mobile number.').bail().matches(/^(?:\+639|09)\d{9}$/).withMessage('Enter a valid Philippine mobile number.'),
     body('check_in_date').custom((val, { req: r }) => {
       const today = new Date().toISOString().slice(0, 10);
@@ -257,11 +352,15 @@ router.post('/book',
       return true;
     }),
     body('start_time').custom((val, { req: r }) => {
-      if (r.body.reservation_type === 'cottage' && !validateCottageTimeRange(val, r.body.end_time)) throw new Error('Time out must be after time in.');
+      const needsTimeRange = r.body.reservation_type === 'cottage' ||
+        (['venue','event'].includes(r.body.reservation_type) && (val || r.body.end_time));
+      if (needsTimeRange && !validateCottageTimeRange(val, r.body.end_time)) throw new Error('Time out must be after time in.');
       return true;
     }),
     body('end_time').custom((val, { req: r }) => {
-      if (r.body.reservation_type === 'cottage' && !validateCottageTimeRange(r.body.start_time, val)) throw new Error('Time out must be after time in.');
+      const needsTimeRange = r.body.reservation_type === 'cottage' ||
+        (['venue','event'].includes(r.body.reservation_type) && (val || r.body.start_time));
+      if (needsTimeRange && !validateCottageTimeRange(r.body.start_time, val)) throw new Error('Time out must be after time in.');
       return true;
     }),
     body('event_date').custom((val, { req: r }) => {
@@ -281,7 +380,10 @@ router.post('/book',
     if (!errors.isEmpty()) { req.session.flash = { error: errors.array()[0].msg }; return res.redirect('/portal/book'); }
 
     const user = req.session.user;
-    function first(v) { return Array.isArray(v) ? (v.find(x => x != null && String(x).trim() !== '') || '') : (v || ''); }
+    function first(v) {
+      if (Array.isArray(v)) return v.find(x => typeof x === 'string' && x.trim() !== '') || '';
+      return typeof v === 'string' ? v : '';
+    }
 
     const reservation_type = first(req.body.reservation_type);
     const item_id          = first(req.body.item_id);
@@ -294,6 +396,7 @@ router.post('/book',
     const num_guests       = first(req.body.num_guests);
     const special_requests = first(req.body.special_requests);
     const payment_method   = first(req.body.payment_method);
+    const contact_phone    = first(req.body.contact_phone).trim();
 
     let selectedInclusions = [];
     const rawInclusions = Array.isArray(req.body['selected_inclusions[]']) ? req.body['selected_inclusions[]'] : req.body['selected_inclusions[]'] ? [req.body['selected_inclusions[]']] : [];
@@ -320,10 +423,23 @@ router.post('/book',
     if (['room','cottage'].includes(reservation_type))   itemId = roomId;
     if (['venue','event'].includes(reservation_type))    itemId = venueId;
 
+    const resource = resourceDetails(reservation_type, itemId);
+    const requiresResource = reservation_type !== 'event' || itemId != null;
+    if (requiresResource && (!resource || !resource.is_active || !BOOKABLE_RESOURCE_STATUSES.has(resource.status))) {
+      req.session.flash = { error: 'That selection is no longer available. Please choose another option.' };
+      return res.redirect('/portal/book');
+    }
+    if (resource && guestCount > resource.capacity) {
+      req.session.flash = { error: 'The selected option cannot accommodate that many guests.' };
+      return res.redirect('/portal/book');
+    }
+
     const totalAmt = await calculateServerTotal(reservation_type, roomId, venueId, pkgId, ciDate, coDate, stTime, enTime, selectedInclusions);
     if (totalAmt <= 0) { req.session.flash = { error: 'Could not calculate the booking price. Please select a valid room, venue, or package.' }; return res.redirect('/portal/book'); }
 
-    const dpAmt   = Math.ceil(totalAmt * 0.5);
+    const downpaymentSetting = await db.prepare("SELECT value FROM settings WHERE key = 'downpayment_percent'").get();
+    const downpaymentPercent = getDownpaymentPercent(downpaymentSetting?.value);
+    const dpAmt   = Math.ceil(totalAmt * downpaymentPercent / 100);
     const pmLabel = { gcash:'GCash', bank_transfer:'Bank Transfer (BDO/BPI)', maya:'Maya', cash:'Cash (Walk-in / Front Desk)' }[pmMethod] || pmMethod;
 
     let customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
@@ -333,17 +449,6 @@ router.post('/book',
       customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
     }
     if (!customer) { req.session.flash = { error: 'Could not create customer record.' }; return res.redirect('/portal/book'); }
-
-    if (reservation_type === 'room' && roomId && ciDate && coDate) {
-      const linkedItems = await db.prepare('SELECT reservation_id FROM reservation_items WHERE item_type = ? AND item_id = ?').all('room', roomId);
-      for (const li of linkedItems) {
-        const existing = await db.prepare('SELECT id, status, check_in_date, check_out_date FROM reservations WHERE id = ?').get(li.reservation_id);
-        if (!existing) continue;
-        if (!['pending','awaiting_payment','confirmed','checked_in'].includes(existing.status)) continue;
-        if (!existing.check_in_date || !existing.check_out_date) continue;
-        if (existing.check_in_date < coDate && existing.check_out_date > ciDate) { req.session.flash = { error: 'Sorry, that room is already reserved for the selected dates.' }; return res.redirect('/portal/rooms'); }
-      }
-    }
 
     const bookingRef = await generateBookingRef();
 
@@ -364,12 +469,30 @@ router.post('/book',
       totalAmt:         Number(totalAmt) || 0,
       dpAmt:            Number(dpAmt)    || 0,
       pmMethod:         pmMethod         != null ? String(pmMethod)         : 'cash',
+      contactPhone:     String(contact_phone || ''),
       // ADDED: Safe fallbacks for user session data to prevent undefined SQLite binding
       firstName:        String(user?.firstName || ''),
       lastName:         String(user?.lastName || ''),
       email:            String(user?.email || '')
     };
-    const resId = db.transaction(() => {
+    const submission = db.transaction(() => {
+      const currentResource = resourceDetails(reservation_type, itemId);
+      const requested = reservation_type === 'room'
+        ? { checkIn: ciDate, checkOut: coDate }
+        : reservation_type === 'cottage'
+          ? { date: ciDate, startTime: stTime, endTime: enTime, wholeDay: resource.name.trim().toLowerCase() === 'umbrella table' }
+          : { date: evDate, startTime: stTime, endTime: enTime };
+      const resourceItemType = reservation_type === 'event' ? 'venue' : reservation_type;
+      if (requiresResource && (!currentResource || !currentResource.is_active || !BOOKABLE_RESOURCE_STATUSES.has(currentResource.status))) {
+        return { error: 'That selection is no longer available. Please choose another option.' };
+      }
+      if (currentResource && guestCount > currentResource.capacity) {
+        return { error: 'The selected option cannot accommodate that many guests.' };
+      }
+      if (itemId != null && resourceConflict(reservation_type, itemId, requested)) {
+        return { error: `That ${resourceItemType} is already reserved for the selected date or time.` };
+      }
+
       const newId = db.prepare(
         'INSERT INTO reservations (booking_ref, customer_id, reservation_type, check_in_date, check_out_date, event_date, start_time, end_time, num_guests, special_requests, total_amount, downpayment_req, status, payment_status, source, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
       ).run(
@@ -384,15 +507,15 @@ router.post('/book',
       if (reservation_type === 'room' && roomId) {
         const row = db.prepare('SELECT name, price FROM rooms WHERE id = ?').get(roomId);
         db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'room', roomId, row?.name||'', 1, row?.price||0, V.totalAmt);
-        db.prepare("UPDATE rooms SET status='reserved', updated_at=datetime('now') WHERE id=?").run(roomId);
+        db.prepare("UPDATE rooms SET status='reserved', updated_at=datetime('now') WHERE id=? AND status IN ('available','reserved')").run(roomId);
       } else if (reservation_type === 'venue' && venueId) {
         const row = db.prepare('SELECT name, price FROM venues WHERE id = ?').get(venueId);
         db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'venue', venueId, row?.name||'', 1, row?.price||0, V.totalAmt);
-        db.prepare("UPDATE venues SET status='reserved', updated_at=datetime('now') WHERE id=?").run(venueId);
+        db.prepare("UPDATE venues SET status='reserved', updated_at=datetime('now') WHERE id=? AND status IN ('available','reserved')").run(venueId);
       } else if (reservation_type === 'cottage' && roomId) {
         const row = db.prepare('SELECT name, price FROM cottages WHERE id = ?').get(roomId);
         db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'cottage', roomId, row?.name||'', 1, row?.price||0, V.totalAmt);
-        db.prepare("UPDATE cottages SET status='reserved', updated_at=datetime('now') WHERE id=?").run(roomId);
+        db.prepare("UPDATE cottages SET status='reserved', updated_at=datetime('now') WHERE id=? AND status IN ('available','reserved')").run(roomId);
       }
 
       if (pkgId) {
@@ -417,11 +540,17 @@ router.post('/book',
 
       db.prepare("INSERT INTO reservation_status_history (reservation_id, from_status, to_status) VALUES (?, NULL, 'awaiting_payment')").run(newId);
       // FIXED: Using V.firstName, V.lastName, V.email to prevent undefined binding
-      db.prepare("INSERT INTO guests (reservation_id, customer_id, first_name, last_name, email, num_guests, status) VALUES (?, ?, ?, ?, ?, ?, 'expected')").run(newId, V.customerId, V.firstName, V.lastName, V.email, V.guestCount);
+      db.prepare("INSERT INTO guests (reservation_id, customer_id, first_name, last_name, email, phone, num_guests, status) VALUES (?, ?, ?, ?, ?, ?, ?, 'expected')").run(newId, V.customerId, V.firstName, V.lastName, V.email, V.contactPhone, V.guestCount);
+      db.prepare("UPDATE customers SET phone = ?, updated_at = datetime('now') WHERE id = ?").run(V.contactPhone, V.customerId);
 
       db.prepare("INSERT INTO crm_activities (customer_id, activity_type, subject, description, status) VALUES (?, 'inquiry', ?, ?, 'completed')").run(V.customerId, 'Online booking submitted', 'Booking ' + bookingRef + ' — ' + reservation_type + ' — ' + V.totalAmt.toLocaleString() + ' total. Downpayment ' + V.dpAmt.toLocaleString() + ' via ' + pmLabel);
-      return newId;
+      return { id: newId };
     })();
+    if (submission.error) {
+      req.session.flash = { error: submission.error };
+      return res.redirect('/portal/book');
+    }
+    const resId = submission.id;
 
     try { await generateReservationQR(resId, bookingRef); } catch (e) { console.error('[Portal] QR generation failed:', e.message); }
 
@@ -439,31 +568,47 @@ router.post('/book',
 router.post('/my-reservations/:id/submit-payment', requireCustomer, proofUpload.single('proof_image'), async (req, res) => {
   const user = req.session.user;
   const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
-  if (!customer) { req.session.flash = { error: 'Session error.' }; return res.redirect('/auth/login'); }
+  if (!customer) { removeUploadedProof(req.file); req.session.flash = { error: 'Session error.' }; return res.redirect('/auth/login'); }
   const reservation = await db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.id, customer.id);
-  if (!reservation) { req.session.flash = { error: 'Booking not found.' }; return res.redirect('/portal/my-reservations'); }
+  if (!reservation) { removeUploadedProof(req.file); req.session.flash = { error: 'Booking not found.' }; return res.redirect('/portal/my-reservations'); }
   const allowedStatuses = ['awaiting_payment', 'pending'];
-  if (!allowedStatuses.includes(reservation.status)) { req.session.flash = { error: 'Payment cannot be submitted for status: ' + reservation.status + '.' }; return res.redirect('/portal/my-reservations/' + req.params.id); }
+  if (!allowedStatuses.includes(reservation.status)) { removeUploadedProof(req.file); req.session.flash = { error: 'Payment cannot be submitted for status: ' + reservation.status + '.' }; return res.redirect('/portal/my-reservations/' + req.params.id); }
   const { payment_method, amount_sent, reference_number, notes } = req.body;
-  const amount = parseFloat(amount_sent);
-  const methodSel = (payment_method || 'cash').trim().toLowerCase();
-  if (!amount || amount <= 0) { if (req.file) { try { fs.unlinkSync(req.file.path); } catch {} } req.session.flash = { error: 'Please enter a valid payment amount.' }; return res.redirect('/portal/my-reservations/' + req.params.id); }
+  const amount = Number.parseFloat(typeof amount_sent === 'string' ? amount_sent : '');
+  const methodSel = typeof payment_method === 'string' ? payment_method.trim().toLowerCase() : '';
+  const expectedMethod = (reservation.payment_method || 'cash').toLowerCase();
+  if (!Number.isFinite(amount) || amount <= 0) { removeUploadedProof(req.file); req.session.flash = { error: 'Please enter a valid payment amount.' }; return res.redirect('/portal/my-reservations/' + req.params.id); }
+  if (!['gcash','bank_transfer','maya','cash'].includes(methodSel) || methodSel !== expectedMethod) {
+    removeUploadedProof(req.file);
+    req.session.flash = { error: 'The payment method must match the method selected for this booking.' };
+    return res.redirect('/portal/my-reservations/' + req.params.id);
+  }
+  let ocrRef = '';
+  let amtMismatch = null;
   if (methodSel === 'gcash') {
     if (!req.file) { req.session.flash = { error: 'Please upload your GCash payment screenshot.' }; return res.redirect('/portal/my-reservations/' + req.params.id); }
     let check;
-    try { check = await validateGcashScreenshot(req.file.path); } catch (e) { check = { valid: false, reasons: ['We could not read the image.'] }; }
-    if (!check.valid) { try { fs.unlinkSync(req.file.path); } catch {} req.session.flash = { error: 'That does not look like a real GCash payment screenshot.' }; return res.redirect('/portal/my-reservations/' + req.params.id); }
-    if (check.extracted && typeof check.extracted.amount === 'number') { const diff = Math.abs(check.extracted.amount - amount); if (diff > 1) req.session._gcashAmountMismatch = check.extracted.amount; }
-    if (check.extracted && check.extracted.refNo) req.session._gcashOcrRef = check.extracted.refNo;
+    try {
+      check = await validateGcashScreenshot(req.file.path);
+    } catch (error) {
+      console.error('[Portal] GCash screenshot validation failed:', error.message);
+      check = { valid: false, reasons: ['We could not read the image.'] };
+    }
+    if (!check.valid) { removeUploadedProof(req.file); req.session.flash = { error: 'That does not look like a real GCash payment screenshot.' }; return res.redirect('/portal/my-reservations/' + req.params.id); }
+    if (check.extracted && typeof check.extracted.amount === 'number') {
+      const diff = Math.abs(check.extracted.amount - amount);
+      if (diff > 1) amtMismatch = check.extracted.amount;
+    }
+    if (check.extracted && check.extracted.refNo) ocrRef = check.extracted.refNo;
   }
   const existingPending = await db.prepare("SELECT id FROM payments WHERE reservation_id = ? AND submitted_by = 'customer' AND status = 'received'").get(reservation.id);
-  if (existingPending) { req.session.flash = { warning: 'You already submitted a payment notification.' }; return res.redirect('/portal/my-reservations/' + req.params.id); }
-  const pmMethod = (payment_method || 'cash').trim();
-  const ocrRef = req.session._gcashOcrRef; delete req.session._gcashOcrRef;
-  const amtMismatch = req.session._gcashAmountMismatch; delete req.session._gcashAmountMismatch;
-  const refNum = (reference_number || '').trim() || (ocrRef || '').trim() || ('CUST-PROOF-' + Date.now());
+  if (existingPending) { removeUploadedProof(req.file); req.session.flash = { warning: 'You already submitted a payment notification.' }; return res.redirect('/portal/my-reservations/' + req.params.id); }
+  const pmMethod = expectedMethod;
+  const referenceNumber = typeof reference_number === 'string' ? reference_number.trim() : '';
+  const note = typeof notes === 'string' ? notes.trim() : '';
+  const refNum = referenceNumber || (ocrRef || '').trim() || ('CUST-PROOF-' + Date.now());
   const proofPath = req.file ? req.file.filename : null;
-  const noteText = ['Customer payment notification submitted online.', reference_number ? 'Transaction Ref: ' + reference_number : (ocrRef ? 'GCash Ref (auto-read): ' + ocrRef : ''), (methodSel === 'gcash') ? 'GCash screenshot passed automatic verification.' : '', (amtMismatch != null) ? ('NOTE: screenshot amount (' + amtMismatch + ') differs from entered amount (' + amount + ').') : '', notes ? 'Note: ' + notes : '', 'Awaiting staff verification.'].filter(Boolean).join(' ');
+  const noteText = ['Customer payment notification submitted online.', referenceNumber ? 'Transaction Ref: ' + referenceNumber : (ocrRef ? 'GCash Ref (auto-read): ' + ocrRef : ''), (methodSel === 'gcash') ? 'GCash screenshot passed automatic verification.' : '', (amtMismatch != null) ? ('NOTE: screenshot amount (' + amtMismatch + ') differs from entered amount (' + amount + ').') : '', note ? 'Note: ' + note : '', 'Awaiting staff verification.'].filter(Boolean).join(' ');
   const payType = amount >= reservation.total_amount ? 'full_payment' : 'downpayment';
   try {
     db.transaction(() => {
@@ -474,8 +619,8 @@ router.post('/my-reservations/:id/submit-payment', requireCustomer, proofUpload.
       db.prepare("UPDATE reservations SET payment_status = ?, updated_at = datetime('now') WHERE id = ?").run(newPayStatus, reservation.id);
     })();
   } catch (error) {
+    removeUploadedProof(req.file);
     if (error.code !== 'SQLITE_CONSTRAINT_UNIQUE') throw error;
-    if (req.file) { try { fs.unlinkSync(req.file.path); } catch {} }
     req.session.flash = { error: 'That transaction/reference number has already been submitted.' };
     return res.redirect('/portal/my-reservations/' + req.params.id);
   }
@@ -625,9 +770,19 @@ router.post('/my-reservations/:id/cancel', requireCustomer, async (req, res) => 
     db.prepare(`INSERT INTO reservation_status_history (reservation_id, from_status, to_status, notes) VALUES (?,?,?,'Cancelled by guest via portal')`).run(reservation.id, reservation.status, 'cancelled');
     const items = db.prepare(`SELECT * FROM reservation_items WHERE reservation_id=?`).all(reservation.id);
     for (const item of items) {
-      if (item.item_type === 'room')    db.prepare(`UPDATE rooms SET status='available', updated_at=datetime('now') WHERE id=?`).run(item.item_id);
-      if (item.item_type === 'venue')   db.prepare(`UPDATE venues SET status='available', updated_at=datetime('now') WHERE id=?`).run(item.item_id);
-      if (item.item_type === 'cottage') db.prepare(`UPDATE cottages SET status='available', updated_at=datetime('now') WHERE id=?`).run(item.item_id);
+      const table = { room: 'rooms', venue: 'venues', cottage: 'cottages' }[item.item_type];
+      if (!table) continue;
+      const stillReserved = db.prepare(`
+        SELECT 1
+        FROM reservation_items ri
+        JOIN reservations r ON r.id = ri.reservation_id
+        WHERE ri.item_type = ? AND ri.item_id = ? AND r.id != ?
+          AND r.status NOT IN ('cancelled', 'rejected', 'completed', 'no_show', 'checked_out')
+        LIMIT 1
+      `).get(item.item_type, item.item_id, reservation.id);
+      if (!stillReserved) {
+        db.prepare(`UPDATE ${table} SET status='available', updated_at=datetime('now') WHERE id=? AND status='reserved'`).run(item.item_id);
+      }
     }
     db.prepare(`UPDATE guests SET status='no_show', updated_at=datetime('now') WHERE reservation_id=?`).run(reservation.id);
   })();
@@ -690,7 +845,7 @@ router.post('/inquire', [
   const customerId = req.session?.user ? (await db.prepare('SELECT id FROM customers WHERE user_id = ?').get(req.session.user.id)?.id || null) : null;
   await db.prepare("INSERT INTO inquiries (customer_id, name, email, phone, subject, message, category, source, status) VALUES (?,?,?,?,?,?,?,'website','open')").run(customerId, name, email||'', phone||'', subject, message, category||'general');
   req.session.flash = { success: 'Your inquiry has been received.' };
-  res.redirect('/portal/my-inquiries');
+  res.redirect(req.session?.user ? '/portal/my-inquiries' : '/portal/inquire');
 });
 
 router.get('/calendar', requireCustomerOrGuest, async (req, res) => {

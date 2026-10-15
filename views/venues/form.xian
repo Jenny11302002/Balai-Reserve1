@@ -1,8 +1,8 @@
 <% layout('layouts/main') %>
 <div class="page-header"><div><nav aria-label="breadcrumb"><ol class="breadcrumb mb-1"><li class="breadcrumb-item"><a href="/venues">Venues</a></li><li class="breadcrumb-item active"><%= venue ? 'Edit Venue' : 'Add Venue' %></li></ol></nav><h3 class="mb-0"><%= venue ? 'Edit ' + venue.name : 'Add New Venue' %></h3></div></div>
 <% if (errors && errors.length > 0) { %><div class="alert alert-danger"><% for (const e of errors) { %><div><i class="fas fa-exclamation-circle me-1"></i><%= e.msg %></div><% } %></div><% } %>
-<div class="row"><div class="col-lg-7"><div class="card"><div class="card-body">
-<form action="<%= venue ? '/venues/' + venue.id + '/edit' : '/venues' %>" method="POST">
+<div class="row g-4"><div class="col-lg-7"><div class="card"><div class="card-body">
+<form action="<%= venue ? '/venues/' + venue.id + '/edit' : '/venues' %>" method="POST" enctype="multipart/form-data" id="venueForm">
   <div class="row g-3">
     <div class="col-md-8"><label class="form-label required">Venue Name</label><input type="text" name="name" class="form-control" value="<%= old.name || '' %>" required /></div>
     <div class="col-md-4"><label class="form-label required">Type</label><select name="venue_type" class="form-select" required><option value="">Select...</option><% for (const t of venueTypes) { %><option value="<%= t %>" <%= (old.venue_type || '') === t ? 'selected' : '' %>><%= t.replace(/_/g,' ') %></option><% } %></select></div>
@@ -19,4 +19,130 @@
     <a href="/venues<%= venue ? '/' + venue.id : '' %>" class="btn btn-outline-secondary">Cancel</a>
   </div>
 </form>
-</div></div></div></div>
+</div></div></div>
+<div class="col-lg-5">
+  <div class="card">
+    <div class="card-header"><h6 class="card-title mb-0"><i class="fas fa-images me-2"></i>Venue Photos</h6></div>
+    <div class="card-body">
+      <% if (venue && venue.imagesList && venue.imagesList.length > 0) { %>
+      <div class="mb-3">
+        <label class="form-label small fw-bold">Current Photos — click × to remove</label>
+        <div class="row g-2">
+          <% for (const image of venue.imagesList) { %>
+          <div class="col-6 existing-img-item">
+            <div class="position-relative">
+              <img src="<%= image %>" alt="Venue photo" class="img-fluid rounded border"
+                style="height:110px;width:100%;object-fit:cover;" />
+              <input type="hidden" name="keep_images" value="<%= image %>" class="keep-img-input" form="venueForm" />
+              <button type="button" class="btn btn-danger btn-xs position-absolute top-0 end-0 m-1 remove-img-btn"
+                style="width:22px;height:22px;padding:0;border-radius:50%;font-size:.65rem;line-height:1;display:flex;align-items:center;justify-content:center;"
+                title="Remove photo">×</button>
+            </div>
+          </div>
+          <% } %>
+        </div>
+      </div>
+      <% } %>
+      <label class="form-label small fw-bold">
+        <%= venue && venue.imagesList && venue.imagesList.length > 0 ? 'Add More Photos' : 'Upload Photos' %>
+        <span class="text-muted fw-normal">(up to 5 total, max 5 MB each — jpg, png, webp)</span>
+      </label>
+      <div class="upload-dropzone" id="venueDropZone" style="border:2px dashed #d1d5db;border-radius:.75rem;padding:1.5rem;text-align:center;background:#f9fafb;cursor:pointer;">
+        <i class="fas fa-cloud-upload-alt fa-2x mb-2 text-muted d-block"></i>
+        <div class="small text-muted">Drag &amp; drop photos here or</div>
+        <label for="venueImageInput" class="btn btn-sm btn-outline-primary mt-2" style="cursor:pointer;">
+          <i class="fas fa-folder-open me-1"></i>Browse Files
+        </label>
+        <input type="file" id="venueImageInput" name="images" form="venueForm" multiple accept="image/*" class="d-none" />
+      </div>
+      <div class="row g-2 mt-2" id="venueImagePreview"></div>
+      <div class="alert alert-light py-2 small mb-0 mt-3">
+        <i class="fas fa-info-circle me-1 text-info"></i>First photo becomes the venue cover image.
+      </div>
+    </div>
+  </div>
+</div></div>
+
+<script>
+(function () {
+  var input = document.getElementById('venueImageInput');
+  var dropZone = document.getElementById('venueDropZone');
+  var preview = document.getElementById('venueImagePreview');
+  var fileList = new DataTransfer();
+  var existingCount = document.querySelectorAll('.keep-img-input').length;
+
+  function renderPreview() {
+    preview.innerHTML = '';
+    Array.from(fileList.files).forEach(function (file, index) {
+      var reader = new FileReader();
+      reader.onload = function (event) {
+        var cell = document.createElement('div');
+        cell.className = 'col-6';
+        var image = document.createElement('img');
+        image.src = event.target.result;
+        image.alt = file.name;
+        image.className = 'img-fluid rounded border';
+        image.style.cssText = 'height:110px;width:100%;object-fit:cover;';
+        cell.appendChild(image);
+        var remove = document.createElement('button');
+        remove.type = 'button';
+        remove.className = 'btn btn-sm btn-danger mt-1 w-100';
+        remove.textContent = 'Remove';
+        remove.addEventListener('click', function () {
+          var nextFiles = new DataTransfer();
+          Array.from(fileList.files).forEach(function (item, itemIndex) {
+            if (itemIndex !== index) nextFiles.items.add(item);
+          });
+          fileList = nextFiles;
+          input.files = fileList.files;
+          renderPreview();
+        });
+        cell.appendChild(remove);
+        preview.appendChild(cell);
+      };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function addFiles(files) {
+    Array.from(files).forEach(function (file) {
+      if (!file.type.startsWith('image/') || fileList.items.length + existingCount >= 5) return;
+      fileList.items.add(file);
+    });
+    input.files = fileList.files;
+    renderPreview();
+  }
+
+  document.querySelectorAll('.remove-img-btn').forEach(function (button) {
+    button.addEventListener('click', function () {
+      var wrapper = button.closest('.existing-img-item');
+      var keepInput = wrapper.querySelector('.keep-img-input');
+      keepInput.disabled = !keepInput.disabled;
+      wrapper.style.opacity = keepInput.disabled ? '.35' : '';
+      button.textContent = keepInput.disabled ? 'Undo' : '×';
+      button.classList.toggle('btn-danger', !keepInput.disabled);
+      button.classList.toggle('btn-success', keepInput.disabled);
+      existingCount = document.querySelectorAll('.keep-img-input:not(:disabled)').length;
+    });
+  });
+  input.addEventListener('change', function () { addFiles(input.files); });
+  dropZone.addEventListener('dragover', function (event) {
+    event.preventDefault();
+    dropZone.style.borderColor = '#4f46e5';
+    dropZone.style.background = '#ede9fe';
+  });
+  dropZone.addEventListener('dragleave', function () {
+    dropZone.style.borderColor = '#d1d5db';
+    dropZone.style.background = '#f9fafb';
+  });
+  dropZone.addEventListener('drop', function (event) {
+    event.preventDefault();
+    dropZone.style.borderColor = '#d1d5db';
+    dropZone.style.background = '#f9fafb';
+    addFiles(event.dataTransfer.files);
+  });
+  dropZone.addEventListener('click', function (event) {
+    if (event.target.tagName !== 'LABEL' && event.target.tagName !== 'INPUT') input.click();
+  });
+})();
+</script>

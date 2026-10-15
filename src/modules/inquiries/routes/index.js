@@ -130,7 +130,7 @@ router.post('/submit',
     notifyAllAdmins('inquiry', 'New Inquiry', `${name} sent a new inquiry: "${subject}"`, `/inquiries/${id}`);
 
     // Check if auto-answer is possible (simple chatbot logic)
-    const autoReply = autoAnswer(subject + ' ' + message);
+    const autoReply = await autoAnswer(subject + ' ' + message);
 
     res.json({ success: true, inquiryId: id, autoReply });
   }
@@ -142,7 +142,7 @@ router.post('/chat', async (req, res) => {
   const { message } = req.body;
   if (!message) return res.json({ reply: 'Please type your question.' });
 
-  const reply = autoAnswer(message);
+  const reply = await autoAnswer(message);
   res.json({ reply });
 });
 

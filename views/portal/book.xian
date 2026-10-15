@@ -448,7 +448,8 @@
                   <option value="">— Choose a venue —</option>
                   <% for (const v of venues) { %>
                   <option value="<%= v.id %>" data-price="<%= v.price %>" data-name="<%= v.name %>" data-cap="<%= v.capacity %>"
-                    data-images="<%= encodeURIComponent(JSON.stringify(v.imagesList || [])) %>">
+                    data-images="<%= encodeURIComponent(JSON.stringify(v.imagesList || [])) %>"
+                    <%= String(filters.item_id) === String(v.id) ? 'selected' : '' %>>
                     <%= v.name %> (Cap: <%= v.capacity %>) — <%= formatPeso(v.price) %>
                   </option>
                   <% } %>
@@ -518,7 +519,7 @@
               <div class="row g-3 mt-1">
                 <div class="col-6 col-md-4">
                   <label class="form-label required">Event Date</label>
-                  <input type="date" name="event_date" id="eventDate" class="form-control" value="<%= old.event_date || '' %>" />
+                  <input type="date" name="event_date" id="eventDate" class="form-control" value="<%= old.event_date || filters.date || '' %>" />
                 </div>
                 <div class="col-6 col-md-4">
                   <label class="form-label">Start Time</label>
@@ -648,7 +649,7 @@
 
                 <div class="alert alert-warning mt-3 py-2 small">
                   <i class="fas fa-exclamation-triangle me-1"></i>
-                  A <strong>50% downpayment</strong> is required to confirm your booking. You will have <strong>48 hours</strong> to complete payment. Failure to pay may result in automatic cancellation.
+                  A <strong><%= terms.downpaymentPercent %>% downpayment</strong> is required to confirm your booking. You will have <strong>48 hours</strong> to complete payment. Failure to pay may result in automatic cancellation.
                 </div>
 
                 <div class="form-check mt-3">
@@ -679,6 +680,7 @@
 <script>
 (function () {
   'use strict';
+  var downpaymentPercent = Number('<%= terms.downpaymentPercent %>');
 
   /* ── Package data injected from server ─────────────────────────────────── */
   var pkgData = {};
@@ -1090,7 +1092,7 @@
         var total = price * nights;
         totalHid.value = total.toFixed(2);
         prevText.textContent = nights + ' night(s) × ' + fmt(price) + ' = ' + fmt(total) +
-          ' total. Downpayment: ' + fmt(Math.ceil(total * 0.5));
+          ' total. Downpayment: ' + fmt(Math.ceil(total * downpaymentPercent / 100));
         preview.classList.remove('d-none');
         updateSummary();
       }
@@ -1127,7 +1129,7 @@
       cottagePrevTxt.textContent = (opt.dataset.name || 'Cottage') + ' — ' +
         (wholeDayRate ? 'whole-day rate' : durationHours.toFixed(2) + ' hour(s)') +
         ' × ' + fmt(rate) + ' = ' + fmt(total) +
-        '. Downpayment: ' + fmt(Math.ceil(total * 0.5));
+        '. Downpayment: ' + fmt(Math.ceil(total * downpaymentPercent / 100));
     }
     if (cottagePreview) cottagePreview.classList.remove('d-none');
     updateSummary();
@@ -1201,7 +1203,7 @@
   function updateSummary() {
     var type   = resTypeInput.value;
     var total  = parseFloat(totalHid.value) || 0;
-    var dp     = Math.ceil(total * 0.5);
+    var dp     = Math.ceil(total * downpaymentPercent / 100);
     var method = document.querySelector('.pay-card input:checked');
     var ng     = parseInt((document.getElementById('numGuests') || {}).value || 1);
 
@@ -1313,7 +1315,7 @@
     if (total > 0) {
       html += '<hr class="my-2" />';
       html += '<div class="summary-row"><span class="text-muted fw-bold">Total Amount</span><span class="fw-bold" style="color:var(--oc-teal);">' + fmt(total) + '</span></div>';
-      html += '<div class="summary-row" style="color:#d97706;"><span class="fw-bold">Downpayment Due (50%)</span><span class="fw-bold">' + fmt(dp) + '</span></div>';
+      html += '<div class="summary-row" style="color:#d97706;"><span class="fw-bold">Downpayment Due (' + downpaymentPercent + '%)</span><span class="fw-bold">' + fmt(dp) + '</span></div>';
       html += '<div class="summary-row text-success"><span class="text-muted">Balance After Downpayment</span><span>' + fmt(total - dp) + '</span></div>';
     }
 

@@ -9,6 +9,10 @@ const db      = require('../../../config/database');
 const { requireAuth, requireRole } = require('../../../middleware/auth');
 
 const router = express.Router();
+const REPORT_BRAND = {
+  name: 'Balai Miciano/ Maple Heaven',
+  address: 'San Antonio, Gloria, Oriental Mindoro',
+};
 
 // ΓöÇΓöÇ Helper: resort branding for report headers/footers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 async function getResortInfo() {
@@ -80,7 +84,8 @@ router.get('/sales', requireAuth, requireRole('admin'), async (req, res) => {
     salesData, byType, totalRevenue, totalTxns,
     filters: { from: fromDate, to: toDate, type }, labelFormat,
     salesDataJson: JSON.stringify(salesData),
-    resort: getResortInfo(),
+    resort: await getResortInfo(),
+    reportBrand: REPORT_BRAND,
   });
 });
 
@@ -120,7 +125,8 @@ router.get('/reservations', requireAuth, requireRole('admin','staff'), async (re
     title: 'Reservation Report', layout: 'layouts/main',
     reservations, statusSummary, typeSummary,
     filters: { from: fromDate, to: toDate, status, type },
-    resort: getResortInfo(),
+    resort: await getResortInfo(),
+    reportBrand: REPORT_BRAND,
   });
 });
 
@@ -151,7 +157,8 @@ router.get('/events', requireAuth, requireRole('admin','staff'), async (req, res
     title: 'Event Report', layout: 'layouts/main',
     events, byType, totalAttendees, totalRevenue,
     filters: { from: fromDate, to: toDate },
-    resort: getResortInfo(),
+    resort: await getResortInfo(),
+    reportBrand: REPORT_BRAND,
   });
 });
 
@@ -192,7 +199,7 @@ router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req,
     return res.status(400).send('Unknown report type.');
   }
 
-  const resort    = getResortInfo();
+  const resort    = await getResortInfo();
   const title     = REPORT_TITLES[reportType] || 'Report';
   const generated = new Date().toLocaleString('en-PH');
   const prettyHeaders = headers.map(h => h.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase()));
@@ -200,7 +207,7 @@ router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req,
   // ΓöÇΓöÇ Excel (xlsx) via exceljs ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   if (format === 'xlsx') {
     const wb = new ExcelJS.Workbook();
-    wb.creator = resort.name;
+    wb.creator = REPORT_BRAND.name;
     const ws = wb.addWorksheet(title, {
       pageSetup: { fitToPage: true, fitToWidth: 1, orientation: 'landscape', margins: { left:0.4, right:0.4, top:0.6, bottom:0.6, header:0.3, footer:0.3 } },
       headerFooter: {
@@ -214,11 +221,11 @@ router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req,
 
     // Branded title block
     ws.mergeCells(span);
-    ws.getCell('A1').value = resort.name;
+    ws.getCell('A1').value = REPORT_BRAND.name;
     ws.getCell('A1').font  = { size: 16, bold: true, color: { argb: 'FF15803D' } };
     ws.getCell('A1').alignment = { horizontal: 'center' };
     ws.mergeCells(`A2:${colLetter(lastCol)}2`);
-    ws.getCell('A2').value = resort.address + (resort.phone ? '  |  Tel: ' + resort.phone : '') + (resort.email ? '  |  ' + resort.email : '');
+    ws.getCell('A2').value = REPORT_BRAND.address;
     ws.getCell('A2').alignment = { horizontal: 'center' };
     ws.getCell('A2').font = { size: 10, color: { argb: 'FF6B7280' } };
     ws.mergeCells(`A3:${colLetter(lastCol)}3`);
@@ -274,8 +281,8 @@ router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req,
         .rpt-footer{margin-top:16px;border-top:1px solid #cbd5e1;padding-top:6px;font-size:10px;color:#777;text-align:center;}
       </style></head><body>
       <div class="rpt-header">
-        <div class="rpt-name">${escapeHtml(resort.name)}</div>
-        <div class="rpt-addr">${escapeHtml(resort.address)}${resort.phone ? ' | Tel: ' + escapeHtml(resort.phone) : ''}${resort.email ? ' | ' + escapeHtml(resort.email) : ''}</div>
+        <div class="rpt-name">${escapeHtml(REPORT_BRAND.name)}</div>
+        <div class="rpt-addr">${escapeHtml(REPORT_BRAND.address)}</div>
         <div class="rpt-title">${escapeHtml(title)} — ${escapeHtml(fromDate)} to ${escapeHtml(toDate)}</div>
       </div>
       <table><thead><tr>${th}</tr></thead><tbody>${trs}</tbody></table>
@@ -289,8 +296,8 @@ router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req,
 
   // ΓöÇΓöÇ CSV (default) with a small branded preamble ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const csvLines = [];
-  csvLines.push(`"${resort.name}"`);
-  if (resort.address) csvLines.push(`"${resort.address.replace(/"/g,'""')}"`);
+  csvLines.push(`"${REPORT_BRAND.name}"`);
+  csvLines.push(`"${REPORT_BRAND.address}"`);
   csvLines.push(`"${title} - ${fromDate} to ${toDate}"`);
   csvLines.push('');
   csvLines.push(prettyHeaders.map(h => `"${h}"`).join(','));

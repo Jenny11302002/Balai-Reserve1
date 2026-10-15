@@ -25,6 +25,10 @@
     <% for (const v of venues) { %>
     <div class="col-12 col-sm-6 col-lg-4">
       <div class="card h-100">
+        <% if (v.imagesList && v.imagesList.length > 0) { %>
+        <img src="<%= v.imagesList[0] %>" alt="<%= v.name %>" class="card-img-top"
+          style="height:180px;object-fit:cover;" />
+        <% } %>
         <div class="card-body">
           <div class="d-flex justify-content-between mb-2">
             <span class="badge bg-primary text-white small"><%= v.venue_type.replace(/_/g,' ') %></span>

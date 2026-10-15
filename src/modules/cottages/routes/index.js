@@ -42,7 +42,7 @@ const upload = multer({
 });
 
 // Helper: parse stored images JSON safely
-async function parseImages(raw) {
+function parseImages(raw) {
   try { return JSON.parse(raw || '[]'); } catch { return []; }
 }
 

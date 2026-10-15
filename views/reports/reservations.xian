@@ -1,8 +1,8 @@
 <% layout('layouts/main') %>
 
 <div class="print-header d-none">
-  <div class="print-resort-name"><%= resort.name %></div>
-  <div class="print-resort-addr"><%= resort.address %><% if (resort.phone) { %> &bull; Tel: <%= resort.phone %><% } %><% if (resort.email) { %> &bull; <%= resort.email %><% } %></div>
+  <div class="print-resort-name"><%= reportBrand.name %></div>
+  <div class="print-resort-addr"><%= reportBrand.address %></div>
   <div class="print-report-title">Reservation Report &mdash; <%= filters.from %> to <%= filters.to %></div>
 </div>
 

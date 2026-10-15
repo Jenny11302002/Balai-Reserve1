@@ -210,10 +210,18 @@ router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req,
     const wb = new ExcelJS.Workbook();
     wb.creator = REPORT_BRAND.name;
     const ws = wb.addWorksheet(title, {
-      pageSetup: { fitToPage: true, fitToWidth: 1, orientation: 'landscape', margins: { left:0.4, right:0.4, top:0.6, bottom:0.6, header:0.3, footer:0.3 } },
+      pageSetup: {
+        paperSize: 9,
+        orientation: 'landscape',
+        fitToPage: true,
+        fitToWidth: 1,
+        fitToHeight: 0,
+        scale: undefined,
+        margins: { left: 0.2, right: 0.2, top: 0.4, bottom: 0.4, header: 0.2, footer: 0.2 },
+      },
       headerFooter: {
-        oddHeader: `&L&B${resort.name}&R${title}`,
-        oddFooter: `&L${resort.address}&CPage &P of &N&R${resort.phone}`,
+        oddHeader: `&L&B${REPORT_BRAND.name}&R${title}`,
+        oddFooter: `&L${REPORT_BRAND.address}&CPage &P of &N&R${resort.phone}`,
       },
     });
     const lastCol = headers.length;
@@ -273,13 +281,15 @@ router.get('/export/:reportType', requireAuth, requireRole('admin'), async (req,
     }).join('');
     const html = `<!DOCTYPE html><html><head><meta charset="utf-8" />
       <style>
-        body{font-family:'Segoe UI',Arial,sans-serif;color:#111;}
-        .rpt-header{text-align:center;border-bottom:2px solid #15803d;padding-bottom:8px;margin-bottom:12px;}
-        .rpt-name{font-size:20px;font-weight:bold;color:#15803d;}
-        .rpt-addr{font-size:11px;color:#555;}
-        .rpt-title{font-size:14px;font-weight:bold;margin-top:6px;}
-        table{border-collapse:collapse;width:100%;font-size:11px;}
-        .rpt-footer{margin-top:16px;border-top:1px solid #cbd5e1;padding-top:6px;font-size:10px;color:#777;text-align:center;}
+        @page{size:A4 landscape;margin:.4in;}
+        body{font-family:'Segoe UI',Arial,sans-serif;color:#111;margin:0;}
+        .rpt-header{text-align:center;border-bottom:2px solid #15803d;padding-bottom:6px;margin-bottom:8px;}
+        .rpt-name{font-size:18px;font-weight:bold;color:#15803d;}
+        .rpt-addr{font-size:10px;color:#555;}
+        .rpt-title{font-size:12px;font-weight:bold;margin-top:4px;}
+        table{border-collapse:collapse;table-layout:fixed;width:100%;font-size:8px;}
+        th,td{box-sizing:border-box;overflow-wrap:anywhere;word-break:break-word;padding:3px 4px !important;vertical-align:top;}
+        .rpt-footer{margin-top:10px;border-top:1px solid #cbd5e1;padding-top:5px;font-size:9px;color:#777;text-align:center;}
       </style></head><body>
       <div class="rpt-header">
         <div class="rpt-name">${escapeHtml(REPORT_BRAND.name)}</div>

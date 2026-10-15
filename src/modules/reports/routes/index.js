@@ -7,7 +7,7 @@ const express = require('express');
 const ExcelJS = require('exceljs');
 const db      = require('../../../config/database');
 const { requireAuth, requireRole } = require('../../../middleware/auth');
-const { formatExcelValue, getColumnWidth } = require('./xlsxFormatting');
+const { formatExcelValue, getColumnWidth } = require('../xlsxFormatting');
 
 const router = express.Router();
 const REPORT_BRAND = {

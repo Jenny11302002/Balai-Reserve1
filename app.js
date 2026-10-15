@@ -58,7 +58,8 @@ const settingsRoutes     = require('./src/modules/settings/routes');
 const app  = express();
 const PORT = process.env.PORT || 3000;
 const isDev= process.env.NODE_ENV !== 'production';
-// Vercel terminates TLS at the edge; trust its forwarded protocol for secure cookies.
+
+// ★★★ DITO ANG FIX: Trust the proxy (Nginx) so rate-limit works correctly ★★★
 app.set('trust proxy', 1);
 
 // ΓöÇΓöÇ Security Headers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
@@ -67,8 +68,7 @@ app.use(helmet({
     directives: {
       defaultSrc: ["'self'"],
       scriptSrc:  ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com'],
-      styleSrc:   ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com',
-                   'fonts.googleapis.com'],
+      styleSrc:   ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'fonts.googleapis.com'],
       fontSrc:    ["'self'", 'fonts.gstatic.com', 'cdnjs.cloudflare.com', 'data:'],
       imgSrc:     ["'self'", 'data:', 'blob:'],
       connectSrc: ["'self'", 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com'],
@@ -85,7 +85,6 @@ if (!isDev) app.use(morgan('combined'));
 else        app.use(morgan('dev'));
 
 // ΓöÇΓöÇ Rate Limiting ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// Auth endpoints: brute-force protection
 app.use('/auth', rateLimit({
   windowMs: 15 * 60 * 1000,
   max:      isDev ? 300 : 30,
@@ -94,14 +93,12 @@ app.use('/auth', rateLimit({
   message: 'Too many login attempts. Please wait 15 minutes and try again.',
 }));
 
-// Global limiter — very generous; skips static assets
 app.use(rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW_MS || '900000'),
   max:      isDev ? 10000 : parseInt(process.env.RATE_LIMIT_MAX || '500'),
   standardHeaders: true, legacyHeaders: false,
   skip: (req) => /^\/(css|js|images|qrcodes|uploads)/.test(req.path),
   handler: (req, res) => {
-    // Render a proper page if session exists; otherwise plain text
     if (req.session?.user) {
       return res.status(429).render('errors/429', {
         title:  'Too Many Requests',
@@ -138,9 +135,6 @@ app.use(session({
 // ΓöÇΓöÇ Static Files ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 app.use(express.static(path.join(__dirname, 'public')));
 
-// Payment-proof images must NEVER be served as public static files — they
-// contain sensitive payment PII. Block direct access here; they are delivered
-// only through the access-controlled route /portal/payment-proof/:paymentId.
 app.use('/uploads/payment_proofs', async (req, res) => {
   res.status(403).send('Forbidden');
 });
@@ -156,16 +150,13 @@ app.use(xianHelpersMiddleware);
 app.use(async (req, res, next) => {
   const user = req.session?.user || null;
 
-  // Flash — read once, clear immediately
   res.locals.flash = req.session?.flash || {};
   if (req.session?.flash) delete req.session.flash;
 
-  // Identity
   res.locals.appName     = process.env.APP_NAME || 'Balai-Reserve';
   res.locals.currentUser = user;
   res.locals.currentPath = req.path;
 
-  // Defaults that every template references (prevents "undefined" errors)
   res.locals.activeTab              = null;
   res.locals.unreadNotifCount       = 0;
   res.locals.recentNotifications    = [];
@@ -179,7 +170,6 @@ app.use(async (req, res, next) => {
       res.locals.pendingInquiriesCount = await db.prepare(
         `SELECT COUNT(*) AS c FROM inquiries WHERE status IN ('open','in_progress')`
       ).get().c || 0;
-      // Count reservations that need staff action: pending review OR awaiting payment verification
       res.locals.pendingReservationsCount = await db.prepare(
         `SELECT COUNT(*) AS c FROM reservations WHERE status IN ('pending','awaiting_payment')`
       ).get().c || 0;
@@ -197,7 +187,6 @@ app.get('/favicon.ico', async (req, res) => res.redirect('/favicon.svg'));
 
 // ΓöÇΓöÇ Root: show public landing page to everyone (auth status changes nav only) ΓöÇΓöÇΓöÇΓöÇ
 app.get('/', async (req, res) => {
-  // ΓöÇΓöÇ Fetch real data from DB for the landing page ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const totalRooms    = await db.prepare("SELECT COUNT(*) AS c FROM rooms    WHERE is_active=1").get().c;
   const totalVenues   = await db.prepare("SELECT COUNT(*) AS c FROM venues   WHERE is_active=1").get().c;
   const totalCottages = await db.prepare("SELECT COUNT(*) AS c FROM cottages WHERE is_active=1").get().c;
@@ -226,7 +215,6 @@ app.get('/', async (req, res) => {
     try { p.inclusionsList = JSON.parse(p.inclusions || '[]'); } catch { p.inclusionsList = []; }
   }
 
-  // Public reviews (most recent, 5-star first, max 6)
   const reviews = await db.prepare(`
     SELECT f.rating, f.comments, f.created_at,
            cu.first_name || ' ' || SUBSTR(cu.last_name,1,1) || '.' AS customer_name
@@ -237,7 +225,6 @@ app.get('/', async (req, res) => {
     LIMIT 6
   `).all();
 
-  // Settings for contact info — use 'siteSettings' to avoid clashing with Express's settings.views
   const settingsRows = await db.prepare("SELECT key, value FROM settings").all();
   const siteSettings = {};
   settingsRows.forEach(s => { siteSettings[s.key] = s.value; });
@@ -248,12 +235,10 @@ app.get('/', async (req, res) => {
     stats: { totalRooms, totalVenues, totalCottages, totalPackages, avgRating: avgRatingRow?.a || '4.5' },
     featuredRooms, featuredVenues, featuredCottages,
     eventPackages, reviews,
-    site: siteSettings,   // 'settings' is reserved by Express — use 'site' instead
+    site: siteSettings,
   });
 });
 
-// Reconcile expired reservations before every application request so
-// availability reflects passed dates immediately, even without a manual checkout.
 app.use((req, res, next) => {
   reconcileExpiredReservations(db);
   next();
@@ -261,11 +246,7 @@ app.use((req, res, next) => {
 
 // ΓöÇΓöÇ Authentication ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 app.use('/auth', authRoutes);
-
-// ΓöÇΓöÇ Customer Portal (public browse + authenticated self-service) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 app.use('/portal', portalRoutes);
-
-// ΓöÇΓöÇ Staff / Admin Modules ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
 app.use('/dashboard',     dashboardRoutes);
 app.use('/rooms',         roomRoutes);
 app.use('/venues',        venueRoutes);
@@ -320,8 +301,6 @@ app.post('/checkin/:token', async (req, res) => {
   await db.prepare(`UPDATE reservations SET status='checked_in', updated_at=datetime('now') WHERE id=?`).run(resId);
   await db.prepare(`INSERT INTO check_ins (reservation_id, method, checked_in_at) VALUES (?,'qr',datetime('now'))`).run(resId);
   await db.prepare(`UPDATE guests SET status='checked_in' WHERE reservation_id=?`).run(resId);
-
-
 
   res.render('guests/checkin-success', { title: 'Check-in Successful', layout: 'layouts/minimal' });
 });

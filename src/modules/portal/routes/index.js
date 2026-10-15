@@ -28,14 +28,13 @@ const { uniqueCatalogRows } = require('../../../utils/catalog');
 
 const router = express.Router();
 
-// ΓöÇΓöÇ Multer: payment proof images ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─ Multer: payment proof images ─────────────────────────────────────────────
 const PROOF_DIR = path.join(process.cwd(), 'uploads', 'payment_proofs');
 if (!fs.existsSync(PROOF_DIR)) fs.mkdirSync(PROOF_DIR, { recursive: true });
 
 const proofStorage = multer.diskStorage({
   destination: (_req, _file, cb) => cb(null, PROOF_DIR),
   filename:    (_req, file, cb) => {
-    // Cryptographically-random, unguessable filename (prevents URL enumeration).
     const ext   = path.extname(file.originalname).toLowerCase();
     const token = crypto.randomBytes(24).toString('hex');
     cb(null, 'proof-' + token + ext);
@@ -52,7 +51,7 @@ const proofUpload = multer({
   },
 });
 
-// ΓöÇΓöÇ Auth helpers ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ─ Auth helpers ─────────────────────────────────────────────────────────────
 const STAFF_ROLES = ['admin','staff'];
 
 async function requireCustomerOrGuest(req, res, next) {
@@ -74,12 +73,10 @@ async function requireCustomer(req, res, next) {
   next();
 }
 
-// ΓöÇΓöÇ Shared portal locals ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── Shared portal locals ─────────────────────────────────────────────────────
 router.use(async (req, res, next) => {
   res.locals.portalLayout = 'layouts/portal';
 
-  // Load payment account settings so every portal view can show real account details.
-  // Defaults are shown if the setting key hasn't been configured yet.
   try {
     const settingKeys = ['gcash_number','gcash_name','maya_number','maya_name','bank_bdo','bank_bpi','bank_name','gcash_qr_path','maya_qr_path'];
     const rows = await db.prepare(
@@ -105,23 +102,7 @@ router.use(async (req, res, next) => {
   next();
 });
 
-// ΓöÇΓöÇ Helper: server-side price calculation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-/**
- * Calculate the correct total for a booking entirely on the server.
- * Never trust the client-submitted total_amount.
- *
- * @param {string}   reservation_type
- * @param {number|null} roomId
- * @param {number|null} venueId
- * @param {number|null} pkgId
- * @param {string|null} ciDate
- * @param {string|null} coDate
- * @param {string|null} startTime
- * @param {string|null} endTime
- * @param {Array}    selectedInclusions  — array of {name, price} from the form;
- *                                         server validates each against the package's
- *                                         actual inclusions to prevent price tampering
- */
+// ── Helper: server-side price calculation ────────────────────────────────────
 async function calculateServerTotal(reservation_type, roomId, venueId, pkgId, ciDate, coDate, startTime, endTime, selectedInclusions = []) {
   let total = 0;
 
@@ -147,20 +128,15 @@ async function calculateServerTotal(reservation_type, roomId, venueId, pkgId, ci
     total = venue ? (venue.price || 0) : 0;
   }
 
-  // Add base package price
   if (pkgId) {
     const pkg = await db.prepare('SELECT price, inclusions FROM event_packages WHERE id = ?').get(pkgId);
     if (pkg) {
       total += pkg.price || 0;
 
-      // Validate and sum optional add-on prices submitted by the client.
-      // We re-read each inclusion's price from the DB so the client cannot
-      // inflate prices by submitting arbitrary amounts.
       if (selectedInclusions.length > 0) {
         let allInclusions = [];
         try { allInclusions = JSON.parse(pkg.inclusions || '[]'); } catch { allInclusions = []; }
 
-        // Build a trusted map: inclusion name ΓåÆ price (only optional add-ons with price > 0)
         const addonMap = new Map();
         for (const inc of allInclusions) {
           if (inc.is_optional && inc.price > 0) {
@@ -168,7 +144,6 @@ async function calculateServerTotal(reservation_type, roomId, venueId, pkgId, ci
           }
         }
 
-        // Sum only inclusions that exist in the trusted map
         for (const sel of selectedInclusions) {
           const name = (sel.name || '').trim();
           if (addonMap.has(name)) {
@@ -182,7 +157,7 @@ async function calculateServerTotal(reservation_type, roomId, venueId, pkgId, ci
   return total;
 }
 
-// ΓöÇΓöÇ GET /portal ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── GET /portal ──────────────────────────────────────────────────────────────
 router.get('/', requireCustomerOrGuest, async (req, res) => {
   const availableRooms  = await db.prepare('SELECT COUNT(*) AS c FROM rooms  WHERE status=\'available\' AND is_active=1').get().c;
   const availableVenues = await db.prepare('SELECT COUNT(DISTINCT lower(trim(name))) AS c FROM venues WHERE status=\'available\' AND is_active=1').get().c;
@@ -222,18 +197,15 @@ router.get('/', requireCustomerOrGuest, async (req, res) => {
   });
 });
 
-// ΓöÇΓöÇ GET /portal/rooms ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── GET /portal/rooms ────────────────────────────────────────────────────────
 router.get('/rooms', requireCustomerOrGuest, async (req, res) => {
   const { checkin = '', checkout = '', guests = '', type = '', sort = 'price_asc' } = req.query;
-  // Show every active room; availability is reflected per-card (booked rooms
-  // are shown as "Unavailable" instead of being hidden).
   let   where  = 'WHERE r.is_active=1';
   const params = [];
 
   if (type)   { where += ' AND rt.name=?';    params.push(type); }
   if (guests) { where += ' AND r.capacity>=?'; params.push(parseInt(guests)); }
 
-  // Set of room ids that are booked for the requested date range (if given).
   let bookedIds = new Set();
   if (checkin && checkout) {
     const rows = await db.prepare(`
@@ -252,11 +224,8 @@ router.get('/rooms', requireCustomerOrGuest, async (req, res) => {
     `SELECT r.*, rt.name AS type_name FROM rooms r JOIN room_types rt ON rt.id=r.room_type_id ${where} ORDER BY ${orderBy}`
   ).all(...params);
 
-  // Parse images and compute availability for each room.
   for (const r of rooms) {
     try { r.imagesList = JSON.parse(r.images || '[]'); } catch { r.imagesList = []; }
-    // Available when the room's status is 'available' AND (if dates were given)
-    // it isn't already booked for that range.
     r.isAvailable = (r.status === 'available') && !bookedIds.has(r.id);
   }
 
@@ -270,10 +239,9 @@ router.get('/rooms', requireCustomerOrGuest, async (req, res) => {
   });
 });
 
-// ΓöÇΓöÇ GET /portal/venues ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── GET /portal/venues ───────────────────────────────────────────────────────
 router.get('/venues', requireCustomerOrGuest, async (req, res) => {
   const { date = '', guests = '', type = '', sort = 'price_asc' } = req.query;
-  // Show all active venues; booked ones render as "Unavailable".
   let   where  = 'WHERE is_active=1';
   const params = [];
 
@@ -288,7 +256,6 @@ router.get('/venues', requireCustomerOrGuest, async (req, res) => {
     req.query.item_id
   );
 
-  // Parse images and compute availability
   for (const v of venues) {
     try { v.imagesList = JSON.parse(v.images || '[]'); } catch { v.imagesList = []; }
     try { v.amenitiesList = JSON.parse(v.amenities || '[]'); } catch { v.amenitiesList = []; }
@@ -303,7 +270,6 @@ router.get('/venues', requireCustomerOrGuest, async (req, res) => {
     p => `${p.event_type || ''}:${p.name}`
   );
 
-  // Parse inclusions for packages
   for (const p of packages) {
     try { p.inclusionsList = JSON.parse(p.inclusions || '[]'); } catch { p.inclusionsList = []; }
   }
@@ -316,10 +282,9 @@ router.get('/venues', requireCustomerOrGuest, async (req, res) => {
   });
 });
 
-// ΓöÇΓöÇ GET /portal/cottages ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── GET /portal/cottages ─────────────────────────────────────────────────────
 router.get('/cottages', requireCustomerOrGuest, async (req, res) => {
   const { date = '', guests = '', sort = 'price_asc', max_price = '' } = req.query;
-  // Show all active cottages; booked ones render as "Unavailable".
   let   where  = 'WHERE is_active=1';
   const params = [];
 
@@ -348,7 +313,7 @@ router.get('/cottages', requireCustomerOrGuest, async (req, res) => {
   });
 });
 
-// ΓöÇΓöÇ GET /portal/book ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── GET /portal/book ─────────────────────────────────────────────────────────
 router.get('/book', requireCustomer, async (req, res) => {
   const { type = '', item_id = '', package_id = '', checkin = '', checkout = '', date = '' } = req.query;
 
@@ -364,7 +329,6 @@ router.get('/book', requireCustomer, async (req, res) => {
     package_id
   );
 
-  // Parse image arrays so the booking page can show a gallery of the selected item.
   const parseImgs = (row) => {
     try { row.imagesList = JSON.parse(row.images || '[]'); } catch { row.imagesList = []; }
     return row;
@@ -372,12 +336,10 @@ router.get('/book', requireCustomer, async (req, res) => {
   rooms.forEach(parseImgs);
   venues.forEach(parseImgs);
 
-  // Parse inclusions into structured objects for the template
   const packages = rawPkgs.map(p => {
     let inclusions = [];
     try { inclusions = JSON.parse(p.inclusions || '[]'); } catch { inclusions = []; }
 
-    // Back-compat: if still old flat-string format, wrap into objects
     if (inclusions.length > 0 && typeof inclusions[0] === 'string') {
       inclusions = inclusions.map(s => ({ name: s, price: 0, is_default: 1, is_optional: 0 }));
     }
@@ -403,7 +365,6 @@ router.get('/book', requireCustomer, async (req, res) => {
   cottages.forEach(parseImgs);
   if (selectedItem) parseImgs(selectedItem);
 
-  // Booking policy settings for the Terms & Conditions modal.
   const policyKeys = ['cancellation_policy','downpayment_percent','check_in_time','check_out_time','resort_name'];
   const policyRows = await db.prepare(
     `SELECT key, value FROM settings WHERE key IN (${policyKeys.map(() => '?').join(',')})`
@@ -425,15 +386,13 @@ router.get('/book', requireCustomer, async (req, res) => {
     cottages,
     filters: { type, item_id, package_id, checkin, checkout, date },
     selectedItem,
-    // Lock the item/type selection when the customer arrived from a specific
-    // "Book" button (a valid item was pre-chosen on the dashboard).
     lockedSelection: !!(selectedItem && ['room','venue','cottage'].includes(type)),
     terms,
     errors: [], old: {},
   });
 });
 
-// ΓöÇΓöÇ POST /portal/book ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── POST /portal/book ────────────────────────────────────────────────────────
 router.post('/book',
   requireCustomer,
   [
@@ -446,7 +405,6 @@ router.post('/book',
       .bail()
       .matches(/^(?:\+639|09)\d{9}$/)
       .withMessage('Enter a valid Philippine mobile number, such as +639545425256 or 09545425256.'),
-    // Date validation — required fields depend on reservation type
     body('check_in_date').custom((val, { req: r }) => {
       const today = new Date().toISOString().slice(0, 10);
       const v = Array.isArray(val) ? val.find(x => x && String(x).trim()) : val;
@@ -504,7 +462,6 @@ router.post('/book',
 
     const user = req.session.user;
 
-    // Normalize fields — any duplicated input names arrive as arrays; take the first non-empty value
     function first(v) { return Array.isArray(v) ? (v.find(x => x != null && String(x).trim() !== '') || '') : (v || ''); }
 
     const reservation_type  = first(req.body.reservation_type);
@@ -519,8 +476,6 @@ router.post('/book',
     const special_requests  = first(req.body.special_requests);
     const payment_method    = first(req.body.payment_method);
 
-    // selected_inclusions[] — array of JSON strings: '{"name":"...","price":0}'
-    // Parse and validate shape; price is re-verified server-side, never trusted
     let selectedInclusions = [];
     const rawInclusions = Array.isArray(req.body['selected_inclusions[]'])
       ? req.body['selected_inclusions[]']
@@ -534,29 +489,26 @@ router.post('/book',
       } catch { /* skip malformed */ }
     }
 
-    // NOTE: total_amount from the form is intentionally IGNORED here.
-    // The server recalculates it from the actual item prices.
-
     const roomId     = item_id    ? parseInt(item_id,    10) : null;
     const venueId    = item_id    ? parseInt(item_id,    10) : null;
     const pkgId      = package_id ? parseInt(package_id, 10) : null;
     const guestCount = parseInt(num_guests, 10) || 1;
+
+    // SAFETY FIX: Ensure dates/times are null if empty string
     const ciDate     = (check_in_date  || '').trim() || null;
     const coDate     = (check_out_date || '').trim() || null;
     const evDate     = (event_date     || '').trim() || null;
     const stTime     = (start_time     || '').trim() || null;
     const enTime     = (end_time       || '').trim() || null;
-    const notes      = (special_requests || '').trim();
+    const notes      = (special_requests || '').trim() || null;
     const pmMethod   = (payment_method || 'cash').trim();
 
-    // ΓöÇΓöÇ FIX 2: Always calculate price server-side ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     let itemId = null;
     if (['room','cottage'].includes(reservation_type))   itemId = roomId;
     if (['venue','event'].includes(reservation_type))    itemId = venueId;
 
     const totalAmt = await calculateServerTotal(reservation_type, roomId, venueId, pkgId, ciDate, coDate, stTime, enTime, selectedInclusions);
 
-    // Guard: if price is still 0 after server calculation, the item doesn't exist
     if (totalAmt <= 0) {
       req.session.flash = { error: 'Could not calculate the booking price. Please select a valid room, venue, or package.' };
       return res.redirect('/portal/book');
@@ -565,7 +517,6 @@ router.post('/book',
     const dpAmt  = Math.ceil(totalAmt * 0.5);
     const pmLabel = { gcash:'GCash', bank_transfer:'Bank Transfer (BDO/BPI)', maya:'Maya', cash:'Cash (Walk-in / Front Desk)' }[pmMethod] || pmMethod;
 
-    // ΓöÇΓöÇ Find or create customer record ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     let customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
     if (!customer) {
       const code = 'CUS-' + String(Date.now()).slice(-6);
@@ -579,7 +530,6 @@ router.post('/book',
       return res.redirect('/portal/book');
     }
 
-    // ΓöÇΓöÇ Double-booking guard (room only) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     if (reservation_type === 'room' && roomId && ciDate && coDate) {
       const linkedItems = await db.prepare('SELECT reservation_id FROM reservation_items WHERE item_type = ? AND item_id = ?').all('room', roomId);
       for (const li of linkedItems) {
@@ -605,11 +555,9 @@ router.post('/book',
         guestCount, notes,
         totalAmt, dpAmt,
         'awaiting_payment', 'unpaid', 'online',
-        pmMethod   // customer's chosen payment method from Step 4
+        pmMethod
       ).lastInsertRowid;
 
-      // Reservation item — and mark the booked resource as reserved so it
-      // stops showing as available while this booking is active.
       if (reservation_type === 'room' && roomId) {
         const row = db.prepare('SELECT name, price FROM rooms WHERE id = ?').get(roomId);
         db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(newId, 'room', roomId, row?.name||'', 1, row?.price||0, totalAmt);
@@ -627,17 +575,14 @@ router.post('/book',
       if (pkgId) {
         const pkg = db.prepare('SELECT name, price, inclusions FROM event_packages WHERE id = ?').get(pkgId);
         if (pkg) {
-          // Insert the base package row
           db.prepare('INSERT INTO reservation_items (reservation_id, item_type, item_id, item_name, quantity, unit_price, total_price) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
             newId, 'event_package', pkgId, pkg.name, 1, pkg.price, pkg.price
           );
 
-          // Insert each selected optional add-on as a separate line item
           if (selectedInclusions.length > 0) {
             let allInclusions = [];
             try { allInclusions = JSON.parse(pkg.inclusions || '[]'); } catch { allInclusions = []; }
 
-            // Build trusted price map (only optional add-ons with price > 0)
             const addonMap = new Map();
             for (const inc of allInclusions) {
               if (inc.is_optional && inc.price > 0) addonMap.set(inc.name, inc.price);
@@ -656,17 +601,12 @@ router.post('/book',
         }
       }
 
-      // Status history
       db.prepare("INSERT INTO reservation_status_history (reservation_id, from_status, to_status) VALUES (?, NULL, 'awaiting_payment')").run(newId);
-
-      // Guest record
       db.prepare("INSERT INTO guests (reservation_id, customer_id, first_name, last_name, email, num_guests, status) VALUES (?, ?, ?, ?, ?, ?, 'expected')").run(newId, customer.id, user.firstName, user.lastName, user.email||'', guestCount);
-
-      // CRM activity
       db.prepare("INSERT INTO crm_activities (customer_id, activity_type, subject, description, status) VALUES (?, 'inquiry', ?, ?, 'completed')").run(
         customer.id,
         'Online booking submitted',
-        'Booking ' + bookingRef + ' — ' + reservation_type + ' — ₱' + totalAmt.toLocaleString() + ' total. Downpayment ₱' + dpAmt.toLocaleString() + ' via ' + pmLabel
+        'Booking ' + bookingRef + ' — ' + reservation_type + ' — ' + totalAmt.toLocaleString() + ' total. Downpayment ₱' + dpAmt.toLocaleString() + ' via ' + pmLabel
       );
 
       return newId;
@@ -683,7 +623,6 @@ router.post('/book',
       '/reservations/' + resId
     );
 
-    // Notify the customer (shows in their portal bell)
     notifyUser(
       user.id,
       'reservation',
@@ -699,9 +638,7 @@ router.post('/book',
   }
 );
 
-// ΓöÇΓöÇ POST /portal/my-reservations/:id/submit-payment ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// FIX 5: multer proof upload + prevent duplicate pending submissions +
-//         update payment_status on reservation immediately
+// ── POST /portal/my-reservations/:id/submit-payment ──────────────────────────
 router.post(
   '/my-reservations/:id/submit-payment',
   requireCustomer,
@@ -720,7 +657,6 @@ router.post(
       return res.redirect('/portal/my-reservations');
     }
 
-    // Guard: can only submit payment when awaiting_payment or pending
     const allowedStatuses = ['awaiting_payment', 'pending'];
     if (!allowedStatuses.includes(reservation.status)) {
       req.session.flash = { error: 'Payment cannot be submitted for a booking with status: ' + reservation.status + '.' };
@@ -732,16 +668,11 @@ router.post(
     const methodSel = (payment_method || 'cash').trim().toLowerCase();
 
     if (!amount || amount <= 0) {
-      // Clean up any uploaded file before bailing out
       if (req.file) { try { fs.unlinkSync(req.file.path); } catch { /* ignore */ } }
       req.session.flash = { error: 'Please enter a valid payment amount.' };
       return res.redirect('/portal/my-reservations/' + req.params.id);
     }
 
-    // ΓöÇΓöÇ GCash screenshot validation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-    // For the GCash method a proof screenshot is REQUIRED and must actually
-    // look like a genuine GCash receipt (verified via OCR). Anything else is
-    // rejected and the uploaded file is deleted.
     if (methodSel === 'gcash') {
       if (!req.file) {
         req.session.flash = { error: 'Please upload your GCash payment screenshot to continue.' };
@@ -756,7 +687,6 @@ router.post(
       }
 
       if (!check.valid) {
-        // Reject: delete the file and send the user back with guidance
         try { fs.unlinkSync(req.file.path); } catch { /* ignore */ }
         const detail = (check.reasons && check.reasons.length)
           ? ' (' + check.reasons[0] + ')'
@@ -768,21 +698,17 @@ router.post(
         return res.redirect('/portal/my-reservations/' + req.params.id);
       }
 
-      // Optional soft cross-check: OCR amount vs the amount the customer typed
       if (check.extracted && typeof check.extracted.amount === 'number') {
         const diff = Math.abs(check.extracted.amount - amount);
         if (diff > 1) {
-          // Don't hard-block (OCR isn't perfect) — record a note for staff below
           req.session._gcashAmountMismatch = check.extracted.amount;
         }
       }
-      // Stash the OCR-extracted ref number so we can use it if the customer left the field blank
       if (check.extracted && check.extracted.refNo) {
         req.session._gcashOcrRef = check.extracted.refNo;
       }
     }
 
-    // ΓöÇΓöÇ FIX 5a: Prevent duplicate unverified submissions ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
     const existingPending = await db.prepare(
       "SELECT id FROM payments WHERE reservation_id = ? AND submitted_by = 'customer' AND status = 'received'"
     ).get(reservation.id);
@@ -793,12 +719,9 @@ router.post(
     }
 
     const pmMethod  = (payment_method || 'cash').trim();
-    // Use the customer-typed reference, else the OCR-extracted GCash ref, else a placeholder
     const ocrRef    = req.session._gcashOcrRef; delete req.session._gcashOcrRef;
     const amtMismatch = req.session._gcashAmountMismatch; delete req.session._gcashAmountMismatch;
     const refNum    = (reference_number || '').trim() || (ocrRef || '').trim() || ('CUST-PROOF-' + Date.now());
-    // Store only the bare filename — proof images are served through the
-    // access-controlled route /portal/payment-proof/:paymentId, never publicly.
     const proofPath = req.file ? req.file.filename : null;
     const noteText  = [
       'Customer payment notification submitted online.',
@@ -813,13 +736,10 @@ router.post(
 
     try {
       db.transaction(() => {
-        // Insert the payment as 'received' — staff will change to 'verified'
         db.prepare(
           'INSERT INTO payments (reservation_id, reference_number, amount, payment_method, payment_date, payment_type, status, notes, proof_image, submitted_by) VALUES (?, ?, ?, ?, DATE(\'now\'), ?, \'received\', ?, ?, \'customer\')'
         ).run(reservation.id, refNum, amount, pmMethod, payType, noteText, proofPath);
 
-        // ΓöÇΓöÇ FIX 5b: Immediately update payment_status so the customer sees
-        //           "Partially Paid" instead of "Unpaid" after submitting proof
         const totalPaid = db.prepare(
           "SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE reservation_id = ? AND status = 'received'"
         ).get(reservation.id).t;
@@ -839,7 +759,6 @@ router.post(
       return res.redirect('/portal/my-reservations/' + req.params.id);
     }
 
-    // Notify staff with proof image info
     notifyAllAdmins(
       'payment',
       'Payment Proof Submitted: ' + reservation.booking_ref,
@@ -847,7 +766,6 @@ router.post(
       '/reservations/' + reservation.id
     );
 
-    // Notify the customer their proof was received
     notifyUser(
       user.id,
       'payment',
@@ -859,17 +777,16 @@ router.post(
     req.session.flash = {
       success: 'Payment notification submitted! Our team will verify and confirm your booking within 24 hours. Thank you!',
     };
-    res.redirect('/portal/my-reservations/' + req.params.id);
+    res.redirect('/portal/my-reservations/' + reservation.id);
   }
 );
 
-// ΓöÇΓöÇ GET /portal/profile — customer profile settings ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── GET /portal/profile ──────────────────────────────────────────────────────
 router.get('/profile', requireCustomer, async (req, res) => {
   const user     = req.session.user;
   const account  = await db.prepare('SELECT * FROM users WHERE id = ?').get(user.id);
   let   customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
 
-  // Ensure a customer record exists
   if (!customer) {
     const code = 'CUS-' + String(Date.now()).slice(-6);
     await db.prepare('INSERT OR IGNORE INTO customers (user_id, customer_code, first_name, last_name, email, status) VALUES (?, ?, ?, ?, ?, ?)').run(
@@ -887,7 +804,7 @@ router.get('/profile', requireCustomer, async (req, res) => {
   });
 });
 
-// ΓöÇΓöÇ POST /portal/profile — update name / phone / address / preferred contact ΓöÇ
+// ── POST /portal/profile ─────────────────────────────────────────────────────
 router.post('/profile',
   requireCustomer,
   [
@@ -914,18 +831,15 @@ router.post('/profile',
     const { first_name, last_name, phone, address, preferred_contact } = req.body;
 
     db.transaction(() => {
-      // Update the users row (auth identity + navbar name)
       db.prepare(`UPDATE users SET first_name=?, last_name=?, phone=?, updated_at=datetime('now') WHERE id=?`)
         .run(first_name, last_name, phone || '', user.id);
 
-      // Update the linked customer profile row
       if (customer) {
         db.prepare(`UPDATE customers SET first_name=?, last_name=?, phone=?, address=?, preferred_contact=?, updated_at=datetime('now') WHERE id=?`)
           .run(first_name, last_name, phone || '', address || '', preferred_contact || 'email', customer.id);
       }
     })();
 
-    // Refresh session so the navbar greeting updates immediately
     req.session.user.firstName = first_name;
     req.session.user.lastName  = last_name;
 
@@ -934,7 +848,7 @@ router.post('/profile',
   }
 );
 
-// ΓöÇΓöÇ POST /portal/profile/password — change password ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── POST /portal/profile/password ────────────────────────────────────────────
 router.post('/profile/password',
   requireCustomer,
   [
@@ -971,14 +885,13 @@ router.post('/profile/password',
   }
 );
 
-// ΓöÇΓöÇ GET /portal/notifications ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── GET /portal/notifications ────────────────────────────────────────────────
 router.get('/notifications', requireCustomer, async (req, res) => {
   const uid = req.session.user.id;
   const notifications = await db.prepare(
     `SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 100`
   ).all(uid);
 
-  // Mark all as read when the customer opens the page
   await db.prepare(`UPDATE notifications SET is_read = 1 WHERE user_id = ?`).run(uid);
 
   res.render('portal/notifications', {
@@ -988,16 +901,14 @@ router.get('/notifications', requireCustomer, async (req, res) => {
   });
 });
 
-// ΓöÇΓöÇ POST /portal/notifications/clear — delete read notifications ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── POST /portal/notifications/clear ────────────────────────────────────────
 router.post('/notifications/clear', requireCustomer, async (req, res) => {
   await db.prepare(`DELETE FROM notifications WHERE user_id = ? AND is_read = 1`).run(req.session.user.id);
   req.session.flash = { success: 'Notifications cleared.' };
   res.redirect('/portal/notifications');
 });
 
-// ΓöÇΓöÇ GET /portal/payment-proof/:paymentId ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// Access-controlled delivery of a GCash payment-proof image. Only the owning
-// customer OR staff/admin may view it. Proof files are NOT served publicly.
+// ─ GET /portal/payment-proof/:paymentId ─────────────────────────────────────
 router.get('/payment-proof/:paymentId', async (req, res) => {
   const sessionUser = req.session?.user;
   if (!sessionUser) {
@@ -1024,8 +935,6 @@ router.get('/payment-proof/:paymentId', async (req, res) => {
     return res.status(403).send('You are not authorized to view this file.');
   }
 
-  // Legacy rows may still hold a '/uploads/payment_proofs/<file>' path — normalise
-  // to a bare filename and resolve strictly inside PROOF_DIR (prevents traversal).
   const bareName = path.basename(payment.proof_image);
   const absPath  = path.join(PROOF_DIR, bareName);
   if (!absPath.startsWith(PROOF_DIR) || !fs.existsSync(absPath)) {
@@ -1036,7 +945,7 @@ router.get('/payment-proof/:paymentId', async (req, res) => {
   return res.sendFile(absPath);
 });
 
-// ΓöÇΓöÇ GET /portal/my-reservations ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── GET /portal/my-reservations ──────────────────────────────────────────────
 router.get('/my-reservations', requireCustomer, async (req, res) => {
   const user     = req.session.user;
   const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
@@ -1053,7 +962,7 @@ router.get('/my-reservations', requireCustomer, async (req, res) => {
   });
 });
 
-// ΓöÇΓöÇ GET /portal/my-reservations/:id ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── GET /portal/my-reservations/:id ──────────────────────────────────────────
 router.get('/my-reservations/:id', requireCustomer, async (req, res) => {
   const user     = req.session.user;
   const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
@@ -1071,33 +980,27 @@ router.get('/my-reservations/:id', requireCustomer, async (req, res) => {
 
   const items = await db.prepare('SELECT * FROM reservation_items WHERE reservation_id = ?').all(reservation.id);
 
-  // ΓöÇΓöÇ FIX 8: Only count non-refunded payments in balance calculation ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
   const payments = await db.prepare(
     "SELECT * FROM payments WHERE reservation_id = ? AND status != 'refunded' ORDER BY payment_date ASC"
   ).all(reservation.id);
 
   const amountPaid   = payments.reduce((s, p) => s + (p.amount || 0), 0);
   const totalAmount  = reservation.total_amount || 0;
-  // ΓöÇΓöÇ FIX 3: balance correctly reflects whether anything was actually paid ΓöÇΓöÇ
   const balance      = totalAmount - amountPaid;
   const isFullyPaid  = totalAmount > 0 && balance <= 0;
   const hasAnyPayment= amountPaid > 0;
 
   const qrCode = await db.prepare('SELECT * FROM qr_codes WHERE reservation_id = ? AND used = 0 ORDER BY created_at DESC LIMIT 1').get(reservation.id);
 
-  // Check for a pending (unverified) customer submission
   const pendingProof = await db.prepare(
     "SELECT * FROM payments WHERE reservation_id = ? AND submitted_by = 'customer' AND status = 'received' ORDER BY created_at DESC LIMIT 1"
   ).get(reservation.id);
 
   const feedback = await db.prepare('SELECT * FROM feedback WHERE reservation_id = ? AND customer_id = ?').get(reservation.id, customer.id);
 
-  // Latest refund request for this booking (if any) — drives the refund UI.
   const refundRequest = await db.prepare(
     'SELECT * FROM refund_requests WHERE reservation_id = ? ORDER BY created_at DESC LIMIT 1'
   ).get(reservation.id);
-  // A refund can be requested when the customer has paid something, the booking
-  // isn't already cancelled/rejected, and there's no pending/approved request yet.
   const canRequestRefund = hasAnyPayment
     && !['cancelled','rejected'].includes(reservation.status)
     && (!refundRequest || refundRequest.status === 'rejected');
@@ -1107,15 +1010,15 @@ router.get('/my-reservations/:id', requireCustomer, async (req, res) => {
     layout:  'layouts/portal',
     reservation, items, payments, qrCode,
     amountPaid, totalAmount, balance,
-    isFullyPaid,      // true only when total > 0 AND balance <= 0
-    hasAnyPayment,    // true when customer has paid something
-    pendingProof,     // non-null when customer has a pending unverified submission
+    isFullyPaid,
+    hasAnyPayment,
+    pendingProof,
     feedback, customer,
     refundRequest, canRequestRefund,
   });
 });
 
-// ΓöÇΓöÇ GET /portal/feedback/:reservationId ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── GET /portal/feedback/:reservationId ──────────────────────────────────────
 router.get('/feedback/:reservationId', requireCustomer, async (req, res) => {
   const user     = req.session.user;
   const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
@@ -1137,10 +1040,7 @@ router.get('/feedback/:reservationId', requireCustomer, async (req, res) => {
   });
 });
 
-// ΓöÇΓöÇ POST /portal/my-reservations/:id/cancel ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// Guests can cancel their own booking while it is still pending or awaiting payment.
-// If payment was already submitted it is NON-REFUNDABLE — booking is cancelled but
-// payment records are kept; staff are notified.
+// ── POST /portal/my-reservations/:id/cancel ──────────────────────────────────
 router.post('/my-reservations/:id/cancel', requireCustomer, async (req, res) => {
   const user     = req.session.user;
   const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
@@ -1155,7 +1055,6 @@ router.post('/my-reservations/:id/cancel', requireCustomer, async (req, res) => 
     return res.redirect('/portal/my-reservations');
   }
 
-  // Only allow cancellation while the booking hasn't been confirmed / checked-in
   const cancellableStatuses = ['pending', 'awaiting_payment'];
   if (!cancellableStatuses.includes(reservation.status)) {
     req.session.flash = {
@@ -1164,18 +1063,15 @@ router.post('/my-reservations/:id/cancel', requireCustomer, async (req, res) => 
     return res.redirect('/portal/my-reservations/' + reservation.id);
   }
 
-  // Check if customer already paid anything — non-refundable notice
   const totalPaid = await db.prepare(
     "SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE reservation_id = ? AND status IN ('received','verified')"
   ).get(reservation.id).t;
   const hasPayment = totalPaid > 0;
 
   db.transaction(() => {
-    // Cancel the reservation
     db.prepare(`UPDATE reservations SET status='cancelled', updated_at=datetime('now') WHERE id=?`).run(reservation.id);
     db.prepare(`INSERT INTO reservation_status_history (reservation_id, from_status, to_status, notes) VALUES (?,?,?,'Cancelled by guest via portal')`).run(reservation.id, reservation.status, 'cancelled');
 
-    // Free up any reserved items so they show as available again immediately
     const items = db.prepare(`SELECT * FROM reservation_items WHERE reservation_id=?`).all(reservation.id);
     for (const item of items) {
       if (item.item_type === 'room')    db.prepare(`UPDATE rooms SET status='available', updated_at=datetime('now') WHERE id=?`).run(item.item_id);
@@ -1183,11 +1079,9 @@ router.post('/my-reservations/:id/cancel', requireCustomer, async (req, res) => 
       if (item.item_type === 'cottage') db.prepare(`UPDATE cottages SET status='available', updated_at=datetime('now') WHERE id=?`).run(item.item_id);
     }
 
-    // Update guest record if present
     db.prepare(`UPDATE guests SET status='no_show', updated_at=datetime('now') WHERE reservation_id=?`).run(reservation.id);
   })();
 
-  // Notify staff of the cancellation
   notifyAllAdmins(
     'reservation',
     'Booking Cancelled by Guest',
@@ -1196,7 +1090,6 @@ router.post('/my-reservations/:id/cancel', requireCustomer, async (req, res) => 
     '/reservations/' + reservation.id
   );
 
-  // Notify the customer their cancellation is confirmed
   notifyUser(
     user.id,
     'reservation',
@@ -1214,8 +1107,7 @@ router.post('/my-reservations/:id/cancel', requireCustomer, async (req, res) => 
   res.redirect('/portal/my-reservations');
 });
 
-// ΓöÇΓöÇ POST /portal/my-reservations/:id/request-refund ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// Customer submits a refund request. It stays 'pending' until an admin reviews it.
+// ── POST /portal/my-reservations/:id/request-refund ──────────────────────────
 router.post('/my-reservations/:id/request-refund', requireCustomer, async (req, res) => {
   const user     = req.session.user;
   const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(user.id);
@@ -1224,7 +1116,6 @@ router.post('/my-reservations/:id/request-refund', requireCustomer, async (req, 
   const reservation = await db.prepare('SELECT * FROM reservations WHERE id = ? AND customer_id = ?').get(req.params.id, customer.id);
   if (!reservation) { req.session.flash = { error: 'Booking not found.' }; return res.redirect('/portal/my-reservations'); }
 
-  // How much has the customer actually paid (net of refunds)?
   const amountPaid = await db.prepare(
     "SELECT COALESCE(SUM(amount),0) AS t FROM payments WHERE reservation_id = ? AND status IN ('received','verified')"
   ).get(reservation.id).t;
@@ -1238,7 +1129,6 @@ router.post('/my-reservations/:id/request-refund', requireCustomer, async (req, 
     return res.redirect('/portal/my-reservations/' + reservation.id);
   }
 
-  // Block duplicate open requests.
   const existing = await db.prepare(
     "SELECT * FROM refund_requests WHERE reservation_id = ? AND status = 'pending' ORDER BY created_at DESC LIMIT 1"
   ).get(reservation.id);
@@ -1253,7 +1143,6 @@ router.post('/my-reservations/:id/request-refund', requireCustomer, async (req, 
     return res.redirect('/portal/my-reservations/' + reservation.id);
   }
 
-  // GCash number where the guest wants to receive the refund (validated if given).
   const gcashNumber = (req.body.gcash_number || '').trim();
   if (gcashNumber && !/^09\d{9}$/.test(gcashNumber)) {
     req.session.flash = { error: 'Please enter a valid GCash number (11 digits starting with 09) to receive your refund.' };
@@ -1275,7 +1164,7 @@ router.post('/my-reservations/:id/request-refund', requireCustomer, async (req, 
   res.redirect('/portal/my-reservations/' + reservation.id);
 });
 
-// ΓöÇΓöÇ GET /portal/feedback/:reservationId ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── POST /portal/feedback/:reservationId ─────────────────────────────────────
 router.post('/feedback/:reservationId',
   requireCustomer,
   [
@@ -1304,7 +1193,7 @@ router.post('/feedback/:reservationId',
   }
 );
 
-// ΓöÇΓöÇ GET /portal/inquire ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── GET /portal/inquire ──────────────────────────────────────────────────────
 router.get('/inquire', requireCustomerOrGuest, async (req, res) => {
   res.render('portal/inquire', {
     title: 'Contact Us – Balai-Reserve', layout: 'layouts/portal',
@@ -1312,7 +1201,7 @@ router.get('/inquire', requireCustomerOrGuest, async (req, res) => {
   });
 });
 
-// ΓöÇΓöÇ POST /portal/inquire ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+// ── POST /portal/inquire ─────────────────────────────────────────────────────
 router.post('/inquire',
   [
     body('name').trim().notEmpty().withMessage('Name is required.'),
@@ -1341,9 +1230,7 @@ router.post('/inquire',
   }
 );
 
-// ΓöÇΓöÇ GET /portal/calendar ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// Interactive availability calendar. Shows booked date ranges (no customer
-// details) so guests can pick an open date; clicking a date starts a booking.
+// ── GET /portal/calendar ─────────────────────────────────────────────────────
 router.get('/calendar', requireCustomerOrGuest, async (req, res) => {
   res.render('portal/calendar', {
     title: 'Availability Calendar – Balai-Reserve',
@@ -1351,13 +1238,10 @@ router.get('/calendar', requireCustomerOrGuest, async (req, res) => {
   });
 });
 
-// ΓöÇΓöÇ GET /portal/calendar/feed ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// JSON feed of booked ranges for FullCalendar. Returns anonymised "Booked"
-// blocks (rooms/cottages as date spans, venues/events as single days).
+// ── GET /portal/calendar/feed ───────────────────────────────────────────────
 router.get('/calendar/feed', requireCustomerOrGuest, async (req, res) => {
   const ACTIVE = "status NOT IN ('cancelled','rejected','completed','no_show')";
 
-  // Room & cottage bookings ΓåÆ multi-day all-day spans.
   const stays = await db.prepare(`
     SELECT r.reservation_type, r.check_in_date, r.check_out_date, ri.item_name
     FROM reservations r
@@ -1367,7 +1251,6 @@ router.get('/calendar/feed', requireCustomerOrGuest, async (req, res) => {
       AND ${ACTIVE}
   `).all();
 
-  // Venue / event bookings ΓåÆ single-day markers.
   const venueEvents = await db.prepare(`
     SELECT r.reservation_type, r.event_date, ri.item_name
     FROM reservations r
@@ -1381,7 +1264,6 @@ router.get('/calendar/feed', requireCustomerOrGuest, async (req, res) => {
   const events = [];
 
   for (const s of stays) {
-    // FullCalendar treats `end` as exclusive, which matches checkout day.
     events.push({
       title: (s.item_name ? s.item_name : (s.reservation_type === 'cottage' ? 'Cottage' : 'Room')) + ' — Booked',
       start: s.check_in_date,
@@ -1404,12 +1286,10 @@ router.get('/calendar/feed', requireCustomerOrGuest, async (req, res) => {
   res.json(events);
 });
 
-// ΓöÇΓöÇ GET /portal/my-inquiries ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
-// Lets a logged-in customer see the inquiries they've submitted and their status.
+// ── GET /portal/my-inquiries ─────────────────────────────────────────────────
 router.get('/my-inquiries', requireCustomer, async (req, res) => {
   const customer = await db.prepare('SELECT * FROM customers WHERE user_id = ?').get(req.session.user.id);
 
-  // Match inquiries linked to the customer id OR submitted with their email.
   let inquiries = [];
   if (customer) {
     inquiries = await db.prepare(`

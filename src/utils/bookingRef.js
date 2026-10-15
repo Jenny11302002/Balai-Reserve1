@@ -5,23 +5,23 @@
 
 const db = require('../config/database');
 
-async function generateBookingRef() {
+function generateBookingRef() {
   const year = new Date().getFullYear();
-  const row  = await db.prepare(`
+  const row  = db.prepare(`
     SELECT COUNT(*) AS cnt FROM reservations WHERE booking_ref LIKE ?
   `).get(`BK-${year}-%`);
   const seq  = String((row.cnt || 0) + 1).padStart(4, '0');
   return `BK-${year}-${seq}`;
 }
 
-async function generateTicketNumber() {
-  const row = await db.prepare(`SELECT COUNT(*) AS cnt FROM support_tickets`).get();
+function generateTicketNumber() {
+  const row = db.prepare(`SELECT COUNT(*) AS cnt FROM support_tickets`).get();
   const seq = String((row.cnt || 0) + 1).padStart(3, '0');
   return `TKT-${seq}`;
 }
 
-async function generateCustomerCode() {
-  const row = await db.prepare(`SELECT COUNT(*) AS cnt FROM customers`).get();
+function generateCustomerCode() {
+  const row = db.prepare(`SELECT COUNT(*) AS cnt FROM customers`).get();
   const seq = String((row.cnt || 0) + 1).padStart(3, '0');
   return `CUS-${seq}`;
 }

@@ -223,7 +223,7 @@ router.get('/book', requireCustomer, async (req, res) => {
 });
 
 // ═══════════════════════════════════════════════════════════════════════════
-// POST /portal/book — THE FIXED VERSION
+// POST /portal/book — THE FINAL FIXED VERSION
 // ═══════════════════════════════════════════════════════════════════════════
 router.post('/book',
   requireCustomer,
@@ -348,11 +348,11 @@ router.post('/book',
     const bookingRef = generateBookingRef();
 
     // ═══════════════════════════════════════════════════════════════════════
-    // 🔧 THE FIX: Sanitize ALL values before SQLite binding
+    // 🔧 THE FINAL FIX: Sanitize ALL values (including user fields) before SQLite binding
     // ══════════════════════════════════════════════════════════════════════
     const V = {
       bookingRef:       bookingRef       != null ? String(bookingRef)       : null,
-      customerId:       customer.id      != null ? Number(customer.id)      : null,
+      customerId:       customer?.id     != null ? Number(customer.id)      : null,
       reservation_type: reservation_type != null ? String(reservation_type) : null,
       ciDate:           ciDate           != null ? String(ciDate)           : null,
       coDate:           coDate           != null ? String(coDate)           : null,
@@ -364,9 +364,11 @@ router.post('/book',
       totalAmt:         Number(totalAmt) || 0,
       dpAmt:            Number(dpAmt)    || 0,
       pmMethod:         pmMethod         != null ? String(pmMethod)         : 'cash',
+      // ADDED: Safe fallbacks for user session data to prevent undefined SQLite binding
+      firstName:        String(user?.firstName || ''),
+      lastName:         String(user?.lastName || ''),
+      email:            String(user?.email || '')
     };
-    console.log('[SAFE BOOKING]', V);
-
     const resId = db.transaction(() => {
       const newId = db.prepare(
         'INSERT INTO reservations (booking_ref, customer_id, reservation_type, check_in_date, check_out_date, event_date, start_time, end_time, num_guests, special_requests, total_amount, downpayment_req, status, payment_status, source, payment_method) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
@@ -414,14 +416,16 @@ router.post('/book',
       }
 
       db.prepare("INSERT INTO reservation_status_history (reservation_id, from_status, to_status) VALUES (?, NULL, 'awaiting_payment')").run(newId);
-      db.prepare("INSERT INTO guests (reservation_id, customer_id, first_name, last_name, email, num_guests, status) VALUES (?, ?, ?, ?, ?, ?, 'expected')").run(newId, customer.id, user.firstName, user.lastName, user.email||'', V.guestCount);
-      db.prepare("INSERT INTO crm_activities (customer_id, activity_type, subject, description, status) VALUES (?, 'inquiry', ?, ?, 'completed')").run(customer.id, 'Online booking submitted', 'Booking ' + bookingRef + ' — ' + reservation_type + ' — ' + V.totalAmt.toLocaleString() + ' total. Downpayment ' + V.dpAmt.toLocaleString() + ' via ' + pmLabel);
+      // FIXED: Using V.firstName, V.lastName, V.email to prevent undefined binding
+      db.prepare("INSERT INTO guests (reservation_id, customer_id, first_name, last_name, email, num_guests, status) VALUES (?, ?, ?, ?, ?, ?, 'expected')").run(newId, V.customerId, V.firstName, V.lastName, V.email, V.guestCount);
+
+      db.prepare("INSERT INTO crm_activities (customer_id, activity_type, subject, description, status) VALUES (?, 'inquiry', ?, ?, 'completed')").run(V.customerId, 'Online booking submitted', 'Booking ' + bookingRef + ' — ' + reservation_type + ' — ' + V.totalAmt.toLocaleString() + ' total. Downpayment ' + V.dpAmt.toLocaleString() + ' via ' + pmLabel);
       return newId;
     })();
 
     try { await generateReservationQR(resId, bookingRef); } catch (e) { console.error('[Portal] QR generation failed:', e.message); }
 
-    notifyAllAdmins('reservation', 'New Online Booking', bookingRef + ' submitted by ' + user.firstName + ' ' + user.lastName + ' via ' + pmLabel, '/reservations/' + resId);
+    notifyAllAdmins('reservation', 'New Online Booking', bookingRef + ' submitted by ' + (user.firstName || '') + ' ' + (user.lastName || '') + ' via ' + pmLabel, '/reservations/' + resId);
     notifyUser(user.id, 'reservation', 'Booking Submitted', 'Your booking ' + bookingRef + ' was received. Pay the downpayment via ' + pmLabel + ' to confirm.', '/portal/my-reservations/' + resId);
 
     req.session.flash = { success: 'Booking ' + bookingRef + ' submitted! Pay the downpayment via ' + pmLabel + ' to confirm your reservation.' };
@@ -475,7 +479,7 @@ router.post('/my-reservations/:id/submit-payment', requireCustomer, proofUpload.
     req.session.flash = { error: 'That transaction/reference number has already been submitted.' };
     return res.redirect('/portal/my-reservations/' + req.params.id);
   }
-  notifyAllAdmins('payment', 'Payment Proof Submitted: ' + reservation.booking_ref, customer.first_name + ' ' + customer.last_name + ' submitted via ' + pmMethod.replace(/_/g,' ') + (proofPath ? ' (with screenshot)' : ''), '/reservations/' + reservation.id);
+  notifyAllAdmins('payment', 'Payment Proof Submitted: ' + reservation.booking_ref, (customer.first_name || '') + ' ' + (customer.last_name || '') + ' submitted via ' + pmMethod.replace(/_/g,' ') + (proofPath ? ' (with screenshot)' : ''), '/reservations/' + reservation.id);
   notifyUser(user.id, 'payment', 'Payment Proof Received', 'We received your payment for ' + reservation.booking_ref + '. Our team will verify it within 24 hours.', '/portal/my-reservations/' + reservation.id);
   req.session.flash = { success: 'Payment notification submitted! Our team will verify and confirm your booking within 24 hours.' };
   res.redirect('/portal/my-reservations/' + reservation.id);
@@ -627,7 +631,7 @@ router.post('/my-reservations/:id/cancel', requireCustomer, async (req, res) => 
     }
     db.prepare(`UPDATE guests SET status='no_show', updated_at=datetime('now') WHERE reservation_id=?`).run(reservation.id);
   })();
-  notifyAllAdmins('reservation', 'Booking Cancelled by Guest', `${reservation.booking_ref} was cancelled by ${user.firstName} ${user.lastName}` + (hasPayment ? ` — ₱${totalPaid.toLocaleString('en-PH')} already paid (NON-REFUNDABLE).` : '.'), '/reservations/' + reservation.id);
+  notifyAllAdmins('reservation', 'Booking Cancelled by Guest', `${reservation.booking_ref} was cancelled by ${(user.firstName || '')} ${(user.lastName || '')}` + (hasPayment ? ` — ₱${totalPaid.toLocaleString('en-PH')} already paid (NON-REFUNDABLE).` : '.'), '/reservations/' + reservation.id);
   notifyUser(user.id, 'reservation', 'Booking Cancelled', `Your booking ${reservation.booking_ref} has been cancelled` + (hasPayment ? '. Payments already made are non-refundable.' : '.'), '/portal/my-reservations/' + reservation.id);
   req.session.flash = { success: `Your booking ${reservation.booking_ref} has been cancelled.` + (hasPayment ? ' Payments already made are non-refundable.' : '') };
   res.redirect('/portal/my-reservations');
@@ -649,7 +653,7 @@ router.post('/my-reservations/:id/request-refund', requireCustomer, async (req, 
   const gcashNumber = (req.body.gcash_number || '').trim();
   if (gcashNumber && !/^09\d{9}$/.test(gcashNumber)) { req.session.flash = { error: 'Please enter a valid GCash number (11 digits starting with 09).' }; return res.redirect('/portal/my-reservations/' + reservation.id); }
   await db.prepare(`INSERT INTO refund_requests (reservation_id, customer_id, amount, reason, gcash_number, status) VALUES (?, ?, ?, ?, ?, 'pending')`).run(reservation.id, customer.id, amountPaid, reason, gcashNumber || null);
-  notifyAllAdmins('payment', 'Refund Requested', `${user.firstName} ${user.lastName} requested a refund of ₱${amountPaid.toLocaleString('en-PH')} for ${reservation.booking_ref}.`, '/reservations/' + reservation.id);
+  notifyAllAdmins('payment', 'Refund Requested', `${(user.firstName || '')} ${(user.lastName || '')} requested a refund of ₱${amountPaid.toLocaleString('en-PH')} for ${reservation.booking_ref}.`, '/reservations/' + reservation.id);
   req.session.flash = { success: 'Your refund request has been submitted.' };
   res.redirect('/portal/my-reservations/' + reservation.id);
 });

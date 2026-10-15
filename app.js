@@ -67,11 +67,13 @@ app.use(helmet({
   contentSecurityPolicy: {
     directives: {
       defaultSrc: ["'self'"],
-      scriptSrc:  ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com'],
+      scriptSrc:  ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com',
+                   'static.cloudflareinsights.com'],
       styleSrc:   ["'self'", "'unsafe-inline'", 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com', 'fonts.googleapis.com'],
       fontSrc:    ["'self'", 'fonts.gstatic.com', 'cdnjs.cloudflare.com', 'data:'],
       imgSrc:     ["'self'", 'data:', 'blob:'],
-      connectSrc: ["'self'", 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com'],
+      connectSrc: ["'self'", 'cdn.jsdelivr.net', 'cdnjs.cloudflare.com',
+                   'cloudflareinsights.com'],
       frameSrc:   ["'self'"],
       formAction: ["'self'"],
       workerSrc:  ["'self'", 'blob:'],

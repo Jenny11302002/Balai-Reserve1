@@ -7,15 +7,19 @@ function isDateColumn(header) {
   return /(?:_date|_at)$/.test(header);
 }
 
+function pad2(value) {
+  return String(value).padStart(2, '0');
+}
+
 function formatExcelValue(value, header) {
   if (value == null) return '';
   if (!(value instanceof Date)) return value;
   if (Number.isNaN(value.getTime())) return '';
 
-  const timestamp = value.toISOString();
+  const date = `${value.getFullYear()}-${pad2(value.getMonth() + 1)}-${pad2(value.getDate())}`;
   return header.endsWith('_at')
-    ? `${timestamp.slice(0, 10)} ${timestamp.slice(11, 19)}`
-    : timestamp.slice(0, 10);
+    ? `${date} ${pad2(value.getHours())}:${pad2(value.getMinutes())}:${pad2(value.getSeconds())}`
+    : date;
 }
 
 function getColumnWidth(label, values, dataKey = label) {

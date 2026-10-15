@@ -6,11 +6,11 @@ const { formatExcelValue, getColumnWidth } = require('../src/modules/reports/xls
 
 test('formats date values as readable text for Excel exports', () => {
   assert.equal(
-    formatExcelValue(new Date('2026-10-15T14:05:06.000Z'), 'check_in_date'),
+    formatExcelValue(new Date(2026, 9, 15, 14, 5, 6), 'check_in_date'),
     '2026-10-15'
   );
   assert.equal(
-    formatExcelValue(new Date('2026-10-15T14:05:06.000Z'), 'created_at'),
+    formatExcelValue(new Date(2026, 9, 15, 14, 5, 6), 'created_at'),
     '2026-10-15 14:05:06'
   );
 });

@@ -90,6 +90,7 @@ app.use('/auth', rateLimit({
   windowMs: 15 * 60 * 1000,
   max:      isDev ? 300 : 30,
   standardHeaders: true, legacyHeaders: false,
+  skip: (req) => req.method === 'GET' && ['/login', '/register'].includes(req.path),
   message: 'Too many login attempts. Please wait 15 minutes and try again.',
 }));
 
